@@ -1,0 +1,103 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 2 / 4 Hybrid - Tactical Minimalism & Structural High-Contrast",
+  "colors": {
+    "background": "#0a0a0a",
+    "surface": "rgba(255, 255, 255, 0.04)",
+    "surface_hover": "rgba(255, 255, 255, 0.06)",
+    "border": "rgba(255, 255, 255, 0.08)",
+    "border_hover": "rgba(255, 255, 255, 0.12)",
+    "primary": "#FF3B30",
+    "primary_hover": "#FF5247",
+    "text_main": "#ffffff",
+    "text_secondary": "#a1a1aa",
+    "danger": "#FF3B30",
+    "success": "#10B981"
+  },
+  "typography": {
+    "headings": {
+      "family": "Outfit, sans-serif",
+      "weights": ["400", "500", "600"],
+      "tracking": "tracking-tight"
+    },
+    "body": {
+      "family": "Manrope, sans-serif",
+      "weights": ["400", "500"],
+      "tracking": "tracking-normal"
+    },
+    "monospace": {
+      "family": "JetBrains Mono, monospace",
+      "usage": "audit logs and IDs"
+    }
+  },
+  "layout_and_spacing": {
+    "grid_system": "Control Room Grid (Dense, gap-6, utilized 100% of space for dashboard widgets)",
+    "card_radius": "rounded-xl (12px)",
+    "button_radius": "rounded-lg",
+    "padding": {
+      "card": "p-6",
+      "dashboard_container": "p-6 md:p-8 lg:p-10"
+    }
+  },
+  "effects_and_surfaces": {
+    "glassmorphism": {
+      "cards": "backdrop-blur-[12px] bg-white/[0.04] border border-white/[0.08]",
+      "header": "backdrop-blur-xl bg-[#0a0a0a]/80 border-b border-white/[0.08]"
+    },
+    "shadows": {
+      "primary_glow": "shadow-[0_0_20px_rgba(255,59,48,0.3)]",
+      "primary_glow_hover": "shadow-[0_0_24px_rgba(255,59,48,0.5)]"
+    }
+  },
+  "interactions": {
+    "hover_states": "Fluid, micro-interactions. Cards slightly lighten bg to bg-white/[0.06]. Buttons get stronger glow.",
+    "transitions": "transition-all duration-300 ease-out"
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#FF3B30] text-white rounded-lg shadow-[0_0_20px_rgba(255,59,48,0.3)] hover:bg-[#FF5247] hover:shadow-[0_0_24px_rgba(255,59,48,0.5)] transition-all font-medium px-4 py-2",
+      "secondary": "bg-white/[0.04] border border-white/[0.08] text-white rounded-lg hover:bg-white/[0.08] transition-all font-medium px-4 py-2",
+      "ghost": "text-zinc-400 hover:text-white rounded-lg hover:bg-white/[0.04] transition-all font-medium px-4 py-2"
+    },
+    "inputs": {
+      "style": "bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-zinc-500 focus:border-[#FF3B30] focus:ring-1 focus:ring-[#FF3B30]/50 transition-all px-3 py-2"
+    },
+    "tables": {
+      "style": "bg-transparent, rows with border-b border-white/[0.08], hover:bg-white/[0.02] transition-colors"
+    },
+    "badges": {
+      "style": "px-2 py-1 rounded-md text-xs font-medium border border-white/[0.08] bg-white/[0.04] text-zinc-300"
+    }
+  },
+  "media": {
+    "icons_library": "lucide-react",
+    "image_urls": [
+      {
+        "category": "login_background",
+        "url": "https://images.unsplash.com/photo-1774156702241-f916f9cd11ce?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBjb25zdHJ1Y3Rpb24lMjBidWlsZGluZyUyMGRhcmslMjBkcmFtYXRpY3xlbnwwfHx8fDE3NzQ4NTY1ODV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Tall buildings shrouded in fog at night. Use as fullscreen background for login page with overlay bg-[#0a0a0a]/90 for extreme darkness and subtle structure."
+      },
+      {
+        "category": "dashboard_hero_abstract",
+        "url": "https://images.unsplash.com/photo-1640346876473-f76a73c71539?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxkYXJrJTIwYWJzdHJhY3QlMjBnZW9tZXRyaWMlMjBiYWNrZ3JvdW5kJTIwbWluaW1hbHxlbnwwfHx8fDE3NzQ4NTY1ODR8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Black and white photo of a wall made of cubes. Can be used in profile header or top dashboard cards masked heavily with black gradients."
+      },
+      {
+        "category": "avatar_placeholder",
+        "url": "https://images.unsplash.com/photo-1767175620484-1ed37931a0d1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBidXNpbmVzcyUyMHBvcnRyYWl0JTIwaGVhZHNob3QlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ4NTY1NzN8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional business portrait headshot dark background"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "You are working on a pure JavaScript (.js) project, do NOT use TypeScript (.tsx).",
+    "Install and use 'lucide-react' for all icons.",
+    "Implement glassmorphism cards using Tailwind exactly like this: 'bg-white/[0.04] border border-white/[0.08] backdrop-blur-[12px] rounded-xl'.",
+    "All interactive elements MUST have 'data-testid' (e.g., data-testid='login-submit-button').",
+    "The layout should consist of a fixed Sidebar and a scrollable main content area. Sidebar should use the 'surface' background color (bg-white/[0.04]) and border-r border-white/[0.08].",
+    "Ensure 'Inter' font is NOT used for headings. Import and use 'Outfit' for headings and 'Manrope' for body text via Google Fonts in index.css.",
+    "The accent color is strictly #FF3B30. Primary buttons MUST have a soft red glow: 'shadow-[0_0_20px_rgba(255,59,48,0.3)]'.",
+    "For the Audit Logs, use a monospace font like JetBrains Mono for IPs, IDs, or timestamps to make it feel highly technical.",
+    "Dashboard layout must follow the 'Control Room' grid archetype - tight gaps (gap-6) and utilizing the full horizontal space."
+  ]
+}
