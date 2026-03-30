@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { outilsApi, domainesApi, usersApi, formatApiError } from '../lib/api';
 import { 
   Plus, Search, Edit2, Trash2, Users, Layers,
-  AlertCircle, UserPlus, X, Settings
+  AlertCircle, UserPlus, X, Settings, Play, Lock
 } from 'lucide-react';
 import {
   Dialog,
@@ -13,8 +14,21 @@ import {
 } from '../components/ui/dialog';
 
 export default function Outils() {
-  const { isDirection, isEncadrant } = useAuth();
+  const navigate = useNavigate();
+  const { user, isDirection, isEncadrant } = useAuth();
   const canManage = isDirection || isEncadrant;
+  
+  // Check if user has access to a specific outil
+  const hasAccessToOutil = (outilId) => {
+    if (isDirection) return true;
+    return user?.outils?.some(o => o.outil_id === outilId);
+  };
+  
+  const getUserRoleForOutil = (outilId) => {
+    if (isDirection) return 'direction';
+    const userOutil = user?.outils?.find(o => o.outil_id === outilId);
+    return userOutil?.role || null;
+  };
   
   const [outils, setOutils] = useState([]);
   const [domaines, setDomaines] = useState([]);
@@ -263,6 +277,32 @@ export default function Outils() {
                   <span key={role} className="badge text-xs">{role}</span>
                 ))}
               </div>
+            </div>
+
+            {/* Use Button */}
+            <div className="border-t border-white/[0.08] pt-4 mt-4">
+              {hasAccessToOutil(outil.id) ? (
+                <button
+                  onClick={() => navigate(`/outils/${outil.id}`)}
+                  className="w-full btn-primary py-2 flex items-center justify-center gap-2"
+                  data-testid={`use-outil-${outil.id}`}
+                >
+                  <Play size={16} />
+                  <span>Utiliser</span>
+                  {getUserRoleForOutil(outil.id) && (
+                    <span className="text-xs opacity-75">({getUserRoleForOutil(outil.id)})</span>
+                  )}
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="w-full py-2 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-500 rounded-lg cursor-not-allowed"
+                  data-testid={`locked-outil-${outil.id}`}
+                >
+                  <Lock size={16} />
+                  <span>Accès refusé</span>
+                </button>
+              )}
             </div>
           </div>
         ))}

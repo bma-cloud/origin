@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Domaines from './pages/Domaines';
 import Outils from './pages/Outils';
+import OutilPage from './pages/OutilPage';
 import AuditLogs from './pages/AuditLogs';
 import { Toaster } from './components/ui/sonner';
 
@@ -101,6 +102,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Outils />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/outils/:outilId"
+        element={
+          <ProtectedRoute>
+            <OutilPage />
           </ProtectedRoute>
         }
       />

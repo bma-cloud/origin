@@ -42,10 +42,12 @@ export function AuthProvider({ children }) {
       { email, password },
       { withCredentials: true }
     );
-    const { access_token, ...userData } = response.data;
+    const { access_token } = response.data;
     localStorage.setItem('access_token', access_token);
-    setUser(userData);
-    return userData;
+    
+    // Fetch full user data with domaines and outils
+    await checkAuth();
+    return response.data;
   };
 
   const register = async (email, nom, prenom, password) => {
