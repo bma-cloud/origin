@@ -14,7 +14,7 @@ Créer une application web avec :
 
 ## User Personas
 1. **Direction (Super Admin)** - Accès total, gestion de tous les utilisateurs, domaines, outils et audit logs
-2. **Encadrant** - Accès limité aux domaines assignés, peut créer des Users
+2. **Encadrant** - Accès limité aux domaines assignés, peut créer des Users, auto-assigné aux outils de ses domaines
 3. **User** - Accès uniquement aux outils assignés
 
 ## Core Requirements (Static)
@@ -25,40 +25,24 @@ Créer une application web avec :
 - [x] PostgreSQL database
 - [ ] AWS S3 file storage (DEFERRED)
 
-## What's Been Implemented (March 30, 2026)
+## What's Been Implemented
 
-### Backend
+### Phase 1 - March 30, 2026 (MVP)
 - FastAPI server with SQLAlchemy async + asyncpg
-- PostgreSQL database with all tables (users, domaines, outils, user_domaines, user_outils, audit_logs, documents)
+- PostgreSQL database with all tables
 - Complete CRUD APIs for all entities
 - JWT authentication with 24h token expiry
 - Role-based middleware and access control
 - Audit logging for all actions
-- Auto-seed first user as Direction
-
-### Frontend
-- React 19 with Tailwind CSS
-- Aura dark UI design (glassmorphism, #FF3B30 accent)
-- AuthContext for JWT management
-- Protected routes with role-based access
+- React frontend with Aura dark UI design
 - Complete pages: Login, Register, Dashboard, Users, Domaines, Outils, Audit Logs
-- Responsive sidebar navigation
-- All CRUD operations with modals
 
-### API Endpoints
-- POST /api/auth/register
-- POST /api/auth/login
-- GET /api/auth/me
-- POST /api/auth/logout
-- GET/POST/PUT/DELETE /api/users
-- GET/POST/PUT/DELETE /api/domaines
-- POST /api/domaines/{id}/assign
-- DELETE /api/domaines/{id}/unassign/{user_id}
-- GET/POST/PUT/DELETE /api/outils
-- POST /api/outils/{id}/assign
-- DELETE /api/outils/{id}/unassign/{user_id}
-- GET /api/audit-logs
-- GET /api/dashboard/stats
+### Phase 2 - March 30, 2026 (Nouvelles fonctionnalités)
+- **Page Profil** : Affiche domaines/outils assignés pour tous les rôles
+- **Rôle viewer ajouté** à PREPA CHANTIER
+- **Voir utilisateurs assignés aux outils** : Direction et Encadrant peuvent voir qui est assigné à chaque outil
+- **Auto-assignation Encadrant** : Quand un encadrant est assigné à un domaine, il reçoit automatiquement accès à tous les outils du domaine (rôle conduc)
+- **Toggle Dark/Light Mode** : Bouton dans le header pour basculer entre les modes
 
 ## Prioritized Backlog
 
@@ -69,23 +53,25 @@ Créer une application web avec :
 - [x] Outil management
 - [x] Role assignment
 - [x] Audit logs
+- [x] Profile page
+- [x] Assigned users view
+- [x] Auto-assignment for encadrants
+- [x] Dark/Light mode toggle
 
 ### P1 (Next Phase)
 - [ ] AWS S3 file storage integration
-- [ ] Document upload/management
-- [ ] User profile page with password change
+- [ ] Document upload/management within outils
+- [ ] Password change functionality
 
 ### P2 (Future)
 - [ ] Email notifications
 - [ ] Advanced reporting/analytics
 - [ ] Export audit logs
 
-## Next Tasks List
-1. Integrate AWS S3 for file storage when user provides credentials
-2. Implement document management within outils
-3. Add user profile page with password change functionality
-4. Implement password reset flow
-5. Add more detailed dashboard metrics
+## Test Accounts
+- Direction: superdadmin@gmail.com / Superadmin123!
+- Encadrant: encadrant@test.com / Encadrant123!
+- User: testuser@test.com / Test123!
 
 ## Technical Stack
 - Backend: FastAPI + SQLAlchemy + asyncpg
@@ -93,3 +79,4 @@ Créer une application web avec :
 - Database: PostgreSQL
 - Auth: JWT + bcrypt
 - Storage: AWS S3 (pending)
+
