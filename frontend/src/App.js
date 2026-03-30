@@ -11,6 +11,7 @@ import OutilPage from './pages/OutilPage';
 import AuditLogs from './pages/AuditLogs';
 import Profile from './pages/Profile';
 import { Toaster } from './components/ui/sonner';
+import AiAssistant from './components/AiAssistant';
 
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
@@ -143,6 +144,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <AiAssistant />
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>

@@ -117,11 +117,11 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Domaines Assignés */}
+        {/* Pôles Assignés */}
         <div className="glass-card p-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Layers size={20} className="text-zinc-400" />
-            Mes Domaines
+            Mes Pôles
             <span className="text-sm text-zinc-500 font-normal">
               ({fullUserData?.domaines?.length || 0})
             </span>
@@ -130,7 +130,7 @@ export default function Profile() {
           {fullUserData?.role_global === 'direction' ? (
             <div className="p-4 rounded-lg bg-[#FF3B30]/10 border border-[#FF3B30]/20">
               <p className="text-sm text-[#FF3B30]">
-                En tant que Direction, vous avez accès à tous les domaines.
+                En tant que Direction, vous avez accès à tous les pôles.
               </p>
             </div>
           ) : fullUserData?.domaines?.length > 0 ? (
@@ -146,7 +146,7 @@ export default function Profile() {
                     </div>
                     <div>
                       <p className="font-medium">{domaine.domaine_nom}</p>
-                      <p className="text-xs text-zinc-500">Domaine assigné</p>
+                      <p className="text-xs text-zinc-500">Pôle assigné</p>
                     </div>
                   </div>
                 </div>
@@ -155,7 +155,7 @@ export default function Profile() {
           ) : (
             <div className="text-center py-8 text-zinc-500">
               <Layers size={32} className="mx-auto mb-2 opacity-50" />
-              <p>Aucun domaine assigné</p>
+              <p>Aucun pôle assigné</p>
             </div>
           )}
         </div>
@@ -225,7 +225,7 @@ export default function Profile() {
             </p>
           </div>
           <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.06]">
-            <p className="text-sm text-zinc-400 mb-1">Domaines accessibles</p>
+            <p className="text-sm text-zinc-400 mb-1">Pôles accessibles</p>
             <p className="text-lg font-semibold">
               {fullUserData?.role_global === 'direction' ? 'Tous' : fullUserData?.domaines?.length || 0}
             </p>
@@ -245,7 +245,7 @@ export default function Profile() {
             {fullUserData?.role_global === 'direction' && (
               <>
                 <PermissionItem text="Gérer tous les utilisateurs" allowed />
-                <PermissionItem text="Créer et gérer les domaines" allowed />
+                <PermissionItem text="Créer et gérer les pôles" allowed />
                 <PermissionItem text="Créer et gérer les outils" allowed />
                 <PermissionItem text="Assigner les rôles" allowed />
                 <PermissionItem text="Consulter les audit logs" allowed />
@@ -256,8 +256,8 @@ export default function Profile() {
               <>
                 <PermissionItem text="Créer des utilisateurs (Users)" allowed />
                 <PermissionItem text="Assigner des rôles outils" allowed />
-                <PermissionItem text="Accéder aux outils de ses domaines" allowed />
-                <PermissionItem text="Créer des domaines" allowed={false} />
+                <PermissionItem text="Accéder aux outils de ses pôles" allowed />
+                <PermissionItem text="Créer des pôles" allowed={false} />
                 <PermissionItem text="Créer des Encadrants" allowed={false} />
                 <PermissionItem text="Consulter les audit logs" allowed={false} />
               </>
@@ -265,9 +265,9 @@ export default function Profile() {
             {fullUserData?.role_global === 'user' && (
               <>
                 <PermissionItem text="Accéder aux outils assignés" allowed />
-                <PermissionItem text="Consulter les domaines" allowed />
+                <PermissionItem text="Consulter les pôles" allowed />
                 <PermissionItem text="Gérer les utilisateurs" allowed={false} />
-                <PermissionItem text="Créer des domaines/outils" allowed={false} />
+                <PermissionItem text="Créer des pôles/outils" allowed={false} />
                 <PermissionItem text="Assigner des rôles" allowed={false} />
                 <PermissionItem text="Consulter les audit logs" allowed={false} />
               </>

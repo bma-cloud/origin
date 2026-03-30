@@ -41,14 +41,14 @@ export default function Dashboard() {
       create_user: 'Création utilisateur',
       update_user: 'Modification utilisateur',
       delete_user: 'Suppression utilisateur',
-      create_domaine: 'Création domaine',
-      update_domaine: 'Modification domaine',
-      delete_domaine: 'Suppression domaine',
+      create_domaine: 'Création pôle',
+      update_domaine: 'Modification pôle',
+      delete_domaine: 'Suppression pôle',
       create_outil: 'Création outil',
       update_outil: 'Modification outil',
       delete_outil: 'Suppression outil',
-      assign_user_domaine: 'Assignation domaine',
-      unassign_user_domaine: 'Retrait domaine',
+      assign_user_domaine: 'Assignation pôle',
+      unassign_user_domaine: 'Retrait pôle',
       assign_user_outil: 'Assignation outil',
       update_user_outil_role: 'Modification rôle',
       unassign_user_outil: 'Retrait outil'
@@ -92,7 +92,7 @@ export default function Dashboard() {
         />
         <StatCard
           icon={Layers}
-          label="Domaines"
+          label="Pôles"
           value={stats?.total_domaines || 0}
         />
         <StatCard
@@ -151,7 +151,7 @@ export default function Dashboard() {
       {user?.role_global === 'user' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="glass-card p-6">
-            <h3 className="font-semibold mb-4">Mes Domaines</h3>
+            <h3 className="font-semibold mb-4">Mes Pôles</h3>
             {user?.domaines?.length > 0 ? (
               <ul className="space-y-2">
                 {user.domaines.map((d) => (
@@ -162,7 +162,7 @@ export default function Dashboard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-zinc-500 text-sm">Aucun domaine assigné</p>
+              <p className="text-zinc-500 text-sm">Aucun pôle assigné</p>
             )}
           </div>
           <div className="glass-card p-6">

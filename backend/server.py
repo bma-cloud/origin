@@ -16,7 +16,7 @@ from typing import List
 from uuid import UUID
 
 from database import engine, Base, get_db
-from models import User, Domaine, Outil, UserDomaine, UserOutil, AuditLog, Document
+from models import User, Domaine, Outil, UserDomaine, UserOutil, AuditLog, Document, ChatMessage
 from schemas import (
     UserLogin, UserRegister, UserCreate, UserUpdate, UserResponse, UserSimpleResponse,
     DomaineCreate, DomaineUpdate, DomaineResponse, DomaineWithOutils,
@@ -490,9 +490,9 @@ async def assign_user_to_domaine(
     )
     db.add(user_domaine)
     
-    # If user is Encadrant, auto-assign to all tools in this domaine with 'conduc' role
+    # Auto-assign user to all tools in this domaine
     tools_assigned = []
-    if user.role_global == 'encadrant' and domaine.outils:
+    if domaine.outils:
         for outil in domaine.outils:
             # Check if not already assigned
             existing_outil = await db.execute(
@@ -562,6 +562,34 @@ async def unassign_user_from_domaine(
                      request.client.host if request.client else None)
     
     return {"message": "User removed from domaine successfully"}
+
+@api_router.get("/domaines/{domaine_id}/users")
+async def get_domaine_users(
+    domaine_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_encadrant_or_direction)
+):
+    """Get all users assigned to a domaine"""
+    domaine_result = await db.execute(
+        select(Domaine)
+        .options(selectinload(Domaine.users).selectinload(UserDomaine.user))
+        .where(Domaine.id == domaine_id)
+    )
+    domaine = domaine_result.scalar_one_or_none()
+    if not domaine:
+        raise HTTPException(status_code=404, detail="Domaine not found")
+    
+    return [
+        {
+            "user_id": str(ud.user.id),
+            "email": ud.user.email,
+            "nom": ud.user.nom,
+            "prenom": ud.user.prenom,
+            "role_global": ud.user.role_global,
+            "assigned_at": ud.assigned_at.isoformat() if ud.assigned_at else None
+        }
+        for ud in domaine.users if ud.user
+    ]
 
 # ============== OUTILS ROUTES ==============
 
@@ -900,6 +928,174 @@ async def get_dashboard_stats(
             for log in logs
         ]
     }
+
+# ============== AI CHAT ROUTES ==============
+
+@api_router.post("/ai/chat")
+async def ai_chat(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Chat with AI assistant that can analyze platform data"""
+    body = await request.json()
+    message = body.get("message", "").strip()
+    session_id = body.get("session_id", str(current_user.id))
+    
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+    
+    # Gather platform context
+    users_count = (await db.execute(select(func.count()).select_from(User))).scalar()
+    domaines_count = (await db.execute(select(func.count()).select_from(Domaine))).scalar()
+    outils_count = (await db.execute(select(func.count()).select_from(Outil))).scalar()
+    
+    # Get domaines with outils
+    domaines_result = await db.execute(
+        select(Domaine).options(selectinload(Domaine.outils)).order_by(Domaine.nom)
+    )
+    domaines_list = domaines_result.scalars().all()
+    
+    domaines_info = []
+    for d in domaines_list:
+        outils_info = []
+        for o in d.outils:
+            role_names = [r.get("name") if isinstance(r, dict) else r for r in (o.roles_disponibles or [])]
+            outils_info.append(f"  - {o.nom} (roles: {', '.join(role_names)})")
+        domaines_info.append(f"- {d.nom}: {d.description or 'Pas de description'}\n" + "\n".join(outils_info))
+    
+    # Get users summary
+    users_result = await db.execute(select(User).order_by(User.created_at.desc()))
+    users_list = users_result.scalars().all()
+    users_summary = []
+    for u in users_list:
+        users_summary.append(f"- {u.prenom} {u.nom} ({u.email}) - Role: {u.role_global} - Actif: {u.is_active}")
+    
+    # Recent audit logs
+    logs_result = await db.execute(
+        select(AuditLog).options(selectinload(AuditLog.user)).order_by(AuditLog.timestamp.desc()).limit(10)
+    )
+    recent_logs = logs_result.scalars().all()
+    logs_info = []
+    for log in recent_logs:
+        user_name = f"{log.user.prenom} {log.user.nom}" if log.user else "Systeme"
+        logs_info.append(f"- {log.action} par {user_name} ({log.timestamp.strftime('%d/%m/%Y %H:%M')})")
+    
+    platform_context = f"""DONNEES ACTUELLES DE LA PLATEFORME:
+- {users_count} utilisateurs, {domaines_count} poles, {outils_count} outils
+
+POLES ET OUTILS:
+{chr(10).join(domaines_info) if domaines_info else "Aucun pole cree"}
+
+UTILISATEURS:
+{chr(10).join(users_summary)}
+
+ACTIVITE RECENTE:
+{chr(10).join(logs_info) if logs_info else "Aucune activite"}
+
+CONTEXTE UTILISATEUR ACTUEL:
+- Nom: {current_user.prenom} {current_user.nom}
+- Role: {current_user.role_global}
+"""
+    
+    system_message = f"""Tu es l'assistant IA de BTP Manager, une plateforme de gestion de chantier BTP.
+
+COMMENT FONCTIONNE LA PLATEFORME:
+- La plateforme organise le travail en Poles (groupes de travail) et Outils (applications/modules).
+- Il y a 3 niveaux d'acces: Direction (admin total), Encadrant (gestion limitee), User (acces outils).
+- Quand un utilisateur est assigne a un Pole, il obtient automatiquement acces a TOUS les outils de ce pole.
+- Chaque outil a des roles specifiques (viewer, conduc, chef_equipe, etc.) avec des permissions differentes.
+- Les permissions possibles sont: lecture, ecriture, suppression, validation, gestion equipe, export, admin.
+- La Direction peut tout faire: creer des poles, outils, utilisateurs, assigner des roles.
+- Les Encadrants peuvent creer des Users et assigner des roles dans leurs poles.
+- Les Users peuvent uniquement utiliser les outils auxquels ils sont assignes.
+- Un audit log trace toutes les actions sur la plateforme.
+
+{platform_context}
+
+Reponds toujours en francais. Sois concis mais precis. Si on te demande d'analyser des donnees, base-toi sur les donnees reelles fournies ci-dessus."""
+    
+    # Load chat history from DB
+    history_result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(20)
+    )
+    history_msgs = list(reversed(history_result.scalars().all()))
+    
+    # Call Claude via emergentintegrations
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AI not configured")
+    
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"btp-{session_id}",
+        system_message=system_message
+    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    
+    # Replay history into chat
+    for msg in history_msgs:
+        if msg.role == "user":
+            await chat.send_message(UserMessage(text=msg.content))
+        # Assistant messages are already in context via send_message responses
+    
+    # Send current message
+    response_text = await chat.send_message(UserMessage(text=message))
+    
+    # Store messages in DB
+    user_msg = ChatMessage(
+        user_id=current_user.id,
+        session_id=session_id,
+        role="user",
+        content=message
+    )
+    assistant_msg = ChatMessage(
+        user_id=current_user.id,
+        session_id=session_id,
+        role="assistant",
+        content=response_text
+    )
+    db.add(user_msg)
+    db.add(assistant_msg)
+    await db.commit()
+    
+    return {"response": response_text, "session_id": session_id}
+
+@api_router.get("/ai/history")
+async def get_ai_history(
+    session_id: str = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get chat history for the current user"""
+    sid = session_id or str(current_user.id)
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == sid, ChatMessage.user_id == current_user.id)
+        .order_by(ChatMessage.created_at.asc())
+        .limit(50)
+    )
+    messages = result.scalars().all()
+    return [
+        {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+        for m in messages
+    ]
+
+@api_router.delete("/ai/history")
+async def clear_ai_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Clear chat history for current user"""
+    await db.execute(
+        delete(ChatMessage).where(ChatMessage.user_id == current_user.id)
+    )
+    await db.commit()
+    return {"message": "Chat history cleared"}
 
 # ============== HEALTH CHECK ==============
 

@@ -329,7 +329,7 @@ export default function Outils() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Outils</h1>
-          <p className="text-zinc-400 mt-1">Gérez les outils par domaine</p>
+          <p className="text-zinc-400 mt-1">Gérez les outils par pôle</p>
         </div>
         {isDirection && (
           <button
@@ -523,7 +523,7 @@ export default function Outils() {
           <div className="col-span-full glass-card text-center py-16">
             <Settings size={48} className="mx-auto mb-4 text-zinc-600" />
             <p className="text-zinc-400">
-              {domaines.length === 0 ? 'Créez d\'abord un domaine' : 'Aucun outil trouvé'}
+              {domaines.length === 0 ? 'Créez d\'abord un pôle' : 'Aucun outil trouvé'}
             </p>
           </div>
         )}
@@ -562,7 +562,7 @@ export default function Outils() {
               </div>
               {!editingOutil && (
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">Domaine</label>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Pôle</label>
                   <select
                     value={formData.domaine_id}
                     onChange={(e) => setFormData(prev => ({ ...prev, domaine_id: e.target.value }))}

@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { domainesApi, usersApi, formatApiError } from '../lib/api';
 import { 
   Plus, Search, Edit2, Trash2, Wrench,
-  AlertCircle, ChevronDown, ChevronUp, UserPlus, X, Layers
+  AlertCircle, ChevronDown, ChevronUp, UserPlus, X, Layers, UserCircle, UserMinus
 } from 'lucide-react';
 import {
   Dialog,
@@ -13,13 +13,16 @@ import {
 } from '../components/ui/dialog';
 
 export default function Domaines() {
-  const { isDirection } = useAuth();
+  const { isDirection, isEncadrant } = useAuth();
+  const canManage = isDirection || isEncadrant;
   const [domaines, setDomaines] = useState([]);
   const [users, setUsers] = useState([]);
+  const [domaineUsers, setDomaineUsers] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedDomaine, setExpandedDomaine] = useState(null);
+  const [expandedUsers, setExpandedUsers] = useState(null);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,6 +47,19 @@ export default function Domaines() {
       ]);
       setDomaines(domainesRes.data);
       setUsers(usersRes.data);
+      
+      if (canManage) {
+        const usersMap = {};
+        for (const domaine of domainesRes.data) {
+          try {
+            const res = await domainesApi.getUsers(domaine.id);
+            usersMap[domaine.id] = res.data;
+          } catch {
+            usersMap[domaine.id] = [];
+          }
+        }
+        setDomaineUsers(usersMap);
+      }
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -110,8 +126,18 @@ export default function Domaines() {
     }
   };
 
+  const handleUnassignUser = async (domaineId, userId) => {
+    if (!window.confirm('Retirer cet utilisateur du pôle ? Il perdra aussi l\'accès aux outils associés.')) return;
+    try {
+      await domainesApi.unassignUser(domaineId, userId);
+      fetchData();
+    } catch (err) {
+      setError(formatApiError(err));
+    }
+  };
+
   const handleDelete = async (domaineId) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer ce domaine ?')) return;
+    if (!window.confirm('Supprimer ce pôle et tous ses outils ?')) return;
     
     try {
       await domainesApi.delete(domaineId);
@@ -138,8 +164,8 @@ export default function Domaines() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Domaines</h1>
-          <p className="text-zinc-400 mt-1">Gérez les domaines de l'entreprise</p>
+          <h1 className="text-2xl font-bold tracking-tight">Pôles</h1>
+          <p className="text-zinc-400 mt-1">Gérez les pôles de l'entreprise</p>
         </div>
         {isDirection && (
           <button
@@ -148,7 +174,7 @@ export default function Domaines() {
             data-testid="create-domaine-btn"
           >
             <Plus size={20} />
-            <span>Nouveau domaine</span>
+            <span>Nouveau pôle</span>
           </button>
         )}
       </div>
@@ -170,16 +196,18 @@ export default function Domaines() {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Rechercher un domaine..."
+          placeholder="Rechercher un pôle..."
           className="w-full pl-12 pr-4 py-3.5 input-field rounded-xl"
           data-testid="domaine-search-input"
         />
       </div>
 
-      {/* Domaines Grid - 3 columns */}
+      {/* Pôles Grid - 3 columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredDomaines.map((domaine) => {
           const isExpanded = expandedDomaine === domaine.id;
+          const isUsersExpanded = expandedUsers === domaine.id;
+          const assignedUsers = domaineUsers[domaine.id] || [];
           
           return (
             <div 
@@ -231,11 +259,12 @@ export default function Domaines() {
                   <p className="text-sm text-zinc-400 mb-3 line-clamp-2">{domaine.description}</p>
                 )}
 
-                {/* Stats */}
-                <div className="flex items-center gap-4 text-sm text-zinc-500">
+                {/* Stats: Outils */}
+                <div className="flex items-center gap-4 text-sm text-zinc-500 mb-2">
                   <button
                     onClick={() => setExpandedDomaine(isExpanded ? null : domaine.id)}
                     className="flex items-center gap-1.5 hover:text-white transition-colors"
+                    data-testid={`toggle-outils-${domaine.id}`}
                   >
                     <Wrench size={14} />
                     <span>{domaine.outils?.length || 0} outils</span>
@@ -245,30 +274,76 @@ export default function Domaines() {
                   </button>
                 </div>
 
+                {/* Stats: Users */}
+                {canManage && (
+                  <div className="flex items-center justify-between text-sm text-zinc-500">
+                    <button
+                      onClick={() => setExpandedUsers(isUsersExpanded ? null : domaine.id)}
+                      className="flex items-center gap-1.5 hover:text-white transition-colors"
+                      data-testid={`toggle-users-${domaine.id}`}
+                    >
+                      <UserCircle size={14} />
+                      <span>{assignedUsers.length} utilisateur{assignedUsers.length > 1 ? 's' : ''}</span>
+                      {isUsersExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </button>
+                  </div>
+                )}
+
                 {/* Expanded outils list */}
                 {isExpanded && domaine.outils?.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-2">
-                    {domaine.outils.map((outil) => (
-                      <div 
-                        key={outil.id} 
-                        className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
-                      >
-                        <span className="text-sm font-medium">{outil.nom}</span>
-                        <div className="flex gap-1">
-                          {(outil.roles_disponibles || []).slice(0, 2).map((role) => {
-                            const roleName = typeof role === 'object' ? role.name : role;
-                            return (
-                              <span key={roleName} className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500">
-                                {roleName}
+                    {domaine.outils.map((outil) => {
+                      const roleNames = (outil.roles_disponibles || []).map(r => typeof r === 'object' ? r.name : r);
+                      return (
+                        <div 
+                          key={outil.id} 
+                          className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+                        >
+                          <span className="text-sm font-medium">{outil.nom}</span>
+                          <div className="flex gap-1">
+                            {roleNames.slice(0, 2).map((role) => (
+                              <span key={role} className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500">
+                                {role}
                               </span>
-                            );
-                          })}
-                          {(outil.roles_disponibles || []).length > 2 && (
-                            <span className="text-xs text-zinc-600">+{outil.roles_disponibles.length - 2}</span>
-                          )}
+                            ))}
+                            {roleNames.length > 2 && (
+                              <span className="text-xs text-zinc-600">+{roleNames.length - 2}</span>
+                            )}
+                          </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Expanded users list */}
+                {isUsersExpanded && canManage && (
+                  <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-2">
+                    {assignedUsers.length > 0 ? assignedUsers.map((u) => (
+                      <div key={u.user_id} className="flex items-center justify-between text-sm group p-2 rounded-lg bg-white/[0.02]">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-6 h-6 rounded-full bg-white/[0.06] flex items-center justify-center text-xs shrink-0">
+                            {u.prenom?.[0]}{u.nom?.[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="truncate block">{u.prenom} {u.nom}</span>
+                            <span className="text-xs text-zinc-500">{u.role_global}</span>
+                          </div>
+                        </div>
+                        {isDirection && (
+                          <button
+                            onClick={() => handleUnassignUser(domaine.id, u.user_id)}
+                            className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            title="Retirer du pôle"
+                            data-testid={`unassign-user-${u.user_id}`}
+                          >
+                            <UserMinus size={14} />
+                          </button>
+                        )}
                       </div>
-                    ))}
+                    )) : (
+                      <p className="text-xs text-zinc-500 text-center py-2">Aucun utilisateur assigné</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -279,7 +354,7 @@ export default function Domaines() {
         {filteredDomaines.length === 0 && (
           <div className="col-span-full glass-card text-center py-16">
             <Layers size={48} className="mx-auto mb-4 text-zinc-600" />
-            <p className="text-zinc-400">Aucun domaine trouvé</p>
+            <p className="text-zinc-400">Aucun pôle trouvé</p>
           </div>
         )}
       </div>
@@ -289,7 +364,7 @@ export default function Domaines() {
         <DialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/[0.08] max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
-              {editingDomaine ? 'Modifier le domaine' : 'Nouveau domaine'}
+              {editingDomaine ? 'Modifier le pôle' : 'Nouveau pôle'}
             </DialogTitle>
           </DialogHeader>
 
@@ -321,7 +396,7 @@ export default function Domaines() {
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 className="w-full px-4 py-2.5 input-field resize-none rounded-xl"
                 rows={3}
-                placeholder="Description du domaine..."
+                placeholder="Description du pôle..."
                 data-testid="domaine-description-input"
               />
             </div>
@@ -352,7 +427,7 @@ export default function Domaines() {
         <DialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/[0.08] max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
-              Assigner à "{assigningDomaine?.nom}"
+              Assigner au pôle "{assigningDomaine?.nom}"
             </DialogTitle>
           </DialogHeader>
 
@@ -383,7 +458,7 @@ export default function Domaines() {
             </div>
 
             <p className="text-xs text-zinc-500">
-              Note: Si l'utilisateur est un Encadrant, il sera automatiquement assigné à tous les outils de ce domaine.
+              L'utilisateur sera automatiquement assigné à tous les outils de ce pôle.
             </p>
 
             <div className="flex gap-3 pt-4">

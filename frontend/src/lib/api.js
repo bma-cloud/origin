@@ -57,6 +57,7 @@ export const domainesApi = {
   create: (data) => api.post('/domaines', data),
   update: (id, data) => api.put(`/domaines/${id}`, data),
   delete: (id) => api.delete(`/domaines/${id}`),
+  getUsers: (domaineId) => api.get(`/domaines/${domaineId}/users`),
   assignUser: (domaineId, userId) => api.post(`/domaines/${domaineId}/assign`, { user_id: userId }),
   unassignUser: (domaineId, userId) => api.delete(`/domaines/${domaineId}/unassign/${userId}`)
 };
@@ -80,6 +81,13 @@ export const auditLogsApi = {
 // Dashboard API
 export const dashboardApi = {
   getStats: () => api.get('/dashboard/stats')
+};
+
+// AI Chat API
+export const aiApi = {
+  chat: (message, sessionId) => api.post('/ai/chat', { message, session_id: sessionId }),
+  getHistory: (sessionId) => api.get(`/ai/history${sessionId ? `?session_id=${sessionId}` : ''}`),
+  clearHistory: () => api.delete('/ai/history')
 };
 
 export default api;
