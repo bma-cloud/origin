@@ -72,7 +72,7 @@ export default function AiAssistant() {
       {/* Floating button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 ${
+        className={`fixed bottom-6 right-52 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 ${
           isOpen 
             ? 'bg-zinc-800 border border-white/[0.1] rotate-0' 
             : 'bg-[#FF3B30] hover:bg-[#FF3B30]/90 hover:scale-110'
@@ -85,7 +85,7 @@ export default function AiAssistant() {
       {/* Chat panel */}
       {isOpen && (
         <div 
-          className="fixed bottom-24 right-6 z-50 w-[400px] max-h-[560px] flex flex-col rounded-2xl border border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl shadow-2xl overflow-hidden animate-fade-in"
+          className="fixed bottom-24 right-52 z-50 w-[400px] max-h-[560px] flex flex-col rounded-2xl border border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl shadow-2xl overflow-hidden animate-fade-in"
           data-testid="ai-chat-panel"
         >
           {/* Header */}
