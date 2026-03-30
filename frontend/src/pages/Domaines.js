@@ -255,12 +255,15 @@ export default function Domaines() {
                       >
                         <span className="text-sm font-medium">{outil.nom}</span>
                         <div className="flex gap-1">
-                          {outil.roles_disponibles?.slice(0, 2).map((role) => (
-                            <span key={role} className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500">
-                              {role}
-                            </span>
-                          ))}
-                          {outil.roles_disponibles?.length > 2 && (
+                          {(outil.roles_disponibles || []).slice(0, 2).map((role) => {
+                            const roleName = typeof role === 'object' ? role.name : role;
+                            return (
+                              <span key={roleName} className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500">
+                                {roleName}
+                              </span>
+                            );
+                          })}
+                          {(outil.roles_disponibles || []).length > 2 && (
                             <span className="text-xs text-zinc-600">+{outil.roles_disponibles.length - 2}</span>
                           )}
                         </div>

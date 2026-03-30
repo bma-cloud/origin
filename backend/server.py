@@ -502,8 +502,15 @@ async def assign_user_to_domaine(
                 )
             )
             if not existing_outil.scalar_one_or_none():
-                # Assign with first available role or 'conduc' if available
-                role = 'conduc' if 'conduc' in (outil.roles_disponibles or []) else (outil.roles_disponibles[0] if outil.roles_disponibles else 'viewer')
+                # Extract role names from structured or legacy format
+                role_names = []
+                for r in (outil.roles_disponibles or []):
+                    if isinstance(r, dict):
+                        role_names.append(r.get("name", ""))
+                    else:
+                        role_names.append(r)
+                # Assign with 'conduc' if available, else first role
+                role = 'conduc' if 'conduc' in role_names else (role_names[0] if role_names else 'viewer')
                 user_outil = UserOutil(
                     user_id=assignment.user_id,
                     outil_id=outil.id,
@@ -597,17 +604,20 @@ async def create_outil(
     if not domaine:
         raise HTTPException(status_code=404, detail="Domaine not found")
     
+    # Serialize roles to dicts for JSON storage
+    roles_data = [r.model_dump() for r in outil_data.roles_disponibles]
+    
     outil = Outil(
         nom=outil_data.nom,
         domaine_id=outil_data.domaine_id,
-        roles_disponibles=outil_data.roles_disponibles
+        roles_disponibles=roles_data
     )
     db.add(outil)
     await db.commit()
     await db.refresh(outil)
     
     await log_action(db, "create_outil", "outil", str(outil.id), current_user.id,
-                     {"nom": outil.nom, "domaine": domaine.nom}, request.client.host if request.client else None)
+                     {"nom": outil.nom, "domaine": domaine.nom, "roles": roles_data}, request.client.host if request.client else None)
     
     return {
         "id": str(outil.id),
@@ -638,6 +648,11 @@ async def update_outil(
         raise HTTPException(status_code=404, detail="Outil not found")
     
     update_data = outil_data.model_dump(exclude_unset=True)
+    
+    # Serialize roles if present
+    if "roles_disponibles" in update_data and update_data["roles_disponibles"] is not None:
+        update_data["roles_disponibles"] = [r if isinstance(r, dict) else r for r in update_data["roles_disponibles"]]
+    
     for key, value in update_data.items():
         setattr(outil, key, value)
     
@@ -743,8 +758,16 @@ async def assign_user_to_outil(
         raise HTTPException(status_code=404, detail="User not found")
     
     # Check if role is valid for this outil
-    if assignment.role not in outil.roles_disponibles:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Available roles: {', '.join(outil.roles_disponibles)}")
+    # roles_disponibles can be structured [{name, permissions, description}] or legacy [str]
+    valid_role_names = []
+    for r in (outil.roles_disponibles or []):
+        if isinstance(r, dict):
+            valid_role_names.append(r.get("name", ""))
+        else:
+            valid_role_names.append(r)
+    
+    if assignment.role not in valid_role_names:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Available roles: {', '.join(valid_role_names)}")
     
     # Check if already assigned
     existing = await db.execute(

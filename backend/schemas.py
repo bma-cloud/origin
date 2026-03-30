@@ -90,22 +90,28 @@ class DomaineResponse(BaseModel):
 class DomaineWithOutils(DomaineResponse):
     outils: List["OutilSimpleResponse"] = []
 
+# Role Schema (for structured roles with permissions)
+class RoleDefinition(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    permissions: List[str] = Field(default=["read"])
+    description: str = ""
+
 # Outil Schemas
 class OutilCreate(BaseModel):
     nom: str = Field(min_length=1, max_length=100)
     domaine_id: UUID
-    roles_disponibles: List[str] = Field(default=["viewer"])
+    roles_disponibles: List[RoleDefinition] = Field(default=[RoleDefinition(name="viewer", permissions=["read"], description="Consultation uniquement")])
 
 class OutilUpdate(BaseModel):
     nom: Optional[str] = None
-    roles_disponibles: Optional[List[str]] = None
+    roles_disponibles: Optional[List[RoleDefinition]] = None
 
 class OutilSimpleResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     nom: str
     domaine_id: UUID
-    roles_disponibles: List[str]
+    roles_disponibles: list
     created_at: datetime
 
 class OutilResponse(OutilSimpleResponse):

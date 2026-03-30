@@ -137,12 +137,19 @@ export default function Outils() {
       nom: outil.nom,
       domaine_id: outil.domaine_id,
     });
-    // Parse existing roles
-    const existingRoles = (outil.roles_disponibles || []).map(roleName => ({
-      name: roleName,
-      permissions: ROLE_TEMPLATES[roleName]?.permissions || ['read'],
-      description: ROLE_TEMPLATES[roleName]?.description || ''
-    }));
+    // Parse existing roles (supports both structured and legacy format)
+    const existingRoles = (outil.roles_disponibles || []).map(role => {
+      if (typeof role === 'object' && role.name) {
+        return { name: role.name, permissions: role.permissions || ['read'], description: role.description || '' };
+      }
+      // Legacy: plain string
+      const roleName = typeof role === 'string' ? role : String(role);
+      return {
+        name: roleName,
+        permissions: ROLE_TEMPLATES[roleName]?.permissions || ['read'],
+        description: ROLE_TEMPLATES[roleName]?.description || ''
+      };
+    });
     setRoles(existingRoles.length > 0 ? existingRoles : [{ name: 'viewer', permissions: ['read'], description: 'Consultation uniquement' }]);
     setNewRoleName('');
     setFormError('');
@@ -152,7 +159,7 @@ export default function Outils() {
   const openAssignModal = (outil) => {
     setAssigningOutil(outil);
     setSelectedUserId('');
-    setSelectedRole(outil.roles_disponibles?.[0] || 'viewer');
+    setSelectedRole(getRoleNames(outil.roles_disponibles)?.[0] || 'viewer');
     setFormError('');
     setIsAssignModalOpen(true);
   };
@@ -226,7 +233,11 @@ export default function Outils() {
       return;
     }
 
-    const rolesDisponibles = roles.map(r => r.name);
+    const rolesDisponibles = roles.map(r => ({
+      name: r.name,
+      permissions: r.permissions,
+      description: r.description || ''
+    }));
 
     try {
       if (editingOutil) {
@@ -289,6 +300,11 @@ export default function Outils() {
     o.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
     o.domaine_nom?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Helper to get role names from structured or legacy format
+  const getRoleNames = (rolesDisponibles) => {
+    return (rolesDisponibles || []).map(r => typeof r === 'object' ? r.name : r);
+  };
 
   const getRoleColor = (role) => {
     if (role === 'direction' || role === 'admin') return 'text-[#FF3B30]';
@@ -408,7 +424,7 @@ export default function Outils() {
 
                 {/* Roles */}
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  {outil.roles_disponibles?.slice(0, 3).map((role) => (
+                  {getRoleNames(outil.roles_disponibles).slice(0, 3).map((role) => (
                     <span 
                       key={role} 
                       className="px-2 py-0.5 text-xs rounded-md bg-white/[0.03] border border-white/[0.06]"
@@ -416,9 +432,9 @@ export default function Outils() {
                       {role}
                     </span>
                   ))}
-                  {outil.roles_disponibles?.length > 3 && (
+                  {getRoleNames(outil.roles_disponibles).length > 3 && (
                     <span className="px-2 py-0.5 text-xs rounded-md bg-white/[0.03] border border-white/[0.06] text-zinc-500">
-                      +{outil.roles_disponibles.length - 3}
+                      +{getRoleNames(outil.roles_disponibles).length - 3}
                     </span>
                   )}
                 </div>
@@ -703,7 +719,7 @@ export default function Outils() {
                 className="w-full px-4 py-2.5 input-field rounded-xl"
                 required
               >
-                {assigningOutil?.roles_disponibles?.map((role) => (
+                {getRoleNames(assigningOutil?.roles_disponibles).map((role) => (
                   <option key={role} value={role}>{role}</option>
                 ))}
               </select>
@@ -731,16 +747,18 @@ export default function Outils() {
           </DialogHeader>
 
           <div className="space-y-3">
-            {viewingOutil?.roles_disponibles?.map((roleName) => {
-              const template = ROLE_TEMPLATES[roleName];
+            {(viewingOutil?.roles_disponibles || []).map((role) => {
+              const roleName = typeof role === 'object' ? role.name : role;
+              const rolePerms = typeof role === 'object' ? (role.permissions || ['read']) : (ROLE_TEMPLATES[role]?.permissions || ['read']);
+              const roleDesc = typeof role === 'object' ? (role.description || '') : (ROLE_TEMPLATES[role]?.description || '');
               return (
                 <div key={roleName} className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium">{roleName}</span>
-                    {template && <span className="text-xs text-zinc-500">{template.description}</span>}
+                    {roleDesc && <span className="text-xs text-zinc-500">{roleDesc}</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {(template?.permissions || ['read']).map((perm) => (
+                    {rolePerms.map((perm) => (
                       <span key={perm} className="px-2 py-0.5 text-xs rounded-md bg-[#FF3B30]/10 text-[#FF3B30] border border-[#FF3B30]/20">
                         {getPermissionLabel(perm)}
                       </span>
