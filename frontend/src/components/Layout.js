@@ -9,7 +9,10 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  User,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -18,17 +21,24 @@ const navItems = [
   { to: '/users', icon: Users, label: 'Utilisateurs', roles: ['direction', 'encadrant'] },
   { to: '/domaines', icon: Layers, label: 'Domaines', roles: ['direction', 'encadrant', 'user'] },
   { to: '/outils', icon: Wrench, label: 'Outils', roles: ['direction', 'encadrant', 'user'] },
-  { to: '/audit-logs', icon: FileText, label: 'Audit Logs', roles: ['direction'] }
+  { to: '/audit-logs', icon: FileText, label: 'Audit Logs', roles: ['direction'] },
+  { to: '/profile', icon: User, label: 'Mon Profil', roles: ['direction', 'encadrant', 'user'] }
 ];
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    document.documentElement.classList.toggle('light-mode');
   };
 
   const filteredNavItems = navItems.filter(item => 
@@ -147,13 +157,24 @@ export default function Layout({ children }) {
             <Menu size={24} />
           </button>
           <div className="hidden lg:block" />
-          <div className="text-sm text-zinc-400">
-            {new Date().toLocaleDateString('fr-FR', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
+          <div className="flex items-center gap-4">
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
+              data-testid="dark-mode-toggle"
+              title={darkMode ? 'Mode clair' : 'Mode sombre'}
+            >
+              {darkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-blue-400" />}
+            </button>
+            <div className="text-sm text-zinc-400">
+              {new Date().toLocaleDateString('fr-FR', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </div>
           </div>
         </header>
 

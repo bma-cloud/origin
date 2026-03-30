@@ -67,6 +67,7 @@ export const outilsApi = {
   create: (data) => api.post('/outils', data),
   update: (id, data) => api.put(`/outils/${id}`, data),
   delete: (id) => api.delete(`/outils/${id}`),
+  getUsers: (outilId) => api.get(`/outils/${outilId}/users`),
   assignUser: (outilId, userId, role) => api.post(`/outils/${outilId}/assign`, { user_id: userId, role }),
   unassignUser: (outilId, userId) => api.delete(`/outils/${outilId}/unassign/${userId}`)
 };

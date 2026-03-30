@@ -1,22 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import api, { formatApiError } from '../lib/api';
+import api, { outilsApi, formatApiError } from '../lib/api';
 import { 
   ArrowLeft, Settings, Users, Shield, AlertCircle, 
-  CheckCircle, Lock, FileText, Calendar, Clock
+  CheckCircle, Lock, FileText, Calendar, Clock, UserCircle
 } from 'lucide-react';
 
 export default function OutilPage() {
   const { outilId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isDirection, isEncadrant } = useAuth();
   const [outil, setOutil] = useState(null);
+  const [assignedUsers, setAssignedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [hasAccess, setHasAccess] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [isUsing, setIsUsing] = useState(false);
+  const canViewUsers = isDirection || isEncadrant;
 
   useEffect(() => {
     fetchOutil();
@@ -51,6 +53,17 @@ export default function OutilPage() {
         } else {
           setHasAccess(false);
           setUserRole(null);
+        }
+      }
+
+      // Fetch assigned users if user can view them
+      if (canViewUsers) {
+        try {
+          const usersRes = await outilsApi.getUsers(outilId);
+          setAssignedUsers(usersRes.data);
+        } catch (err) {
+          // Silently fail - user might not have access
+          console.log('Could not fetch assigned users');
         }
       }
     } catch (err) {
@@ -289,6 +302,45 @@ export default function OutilPage() {
               ))}
             </div>
           </div>
+
+          {/* Assigned Users Section (for Direction/Encadrant) */}
+          {canViewUsers && assignedUsers.length > 0 && (
+            <div className="glass-card p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <UserCircle size={20} className="text-purple-400" />
+                Utilisateurs assignés
+                <span className="text-sm text-zinc-500 font-normal">({assignedUsers.length})</span>
+              </h2>
+              <div className="space-y-3">
+                {assignedUsers.map((assignedUser) => (
+                  <div 
+                    key={assignedUser.user_id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-white/[0.08] flex items-center justify-center">
+                        <span className="text-sm font-medium">
+                          {assignedUser.prenom?.[0]}{assignedUser.nom?.[0]}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{assignedUser.prenom} {assignedUser.nom}</p>
+                        <p className="text-xs text-zinc-500">{assignedUser.email}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`badge ${getRoleColor(assignedUser.outil_role)}`}>
+                        {assignedUser.outil_role}
+                      </span>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {assignedUser.role_global === 'encadrant' ? 'Encadrant' : 'User'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right - Info Panel */}

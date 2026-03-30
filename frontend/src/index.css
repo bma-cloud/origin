@@ -249,3 +249,80 @@ code, .mono {
     display: contents !important;
   }
 }
+
+/* Light mode styles */
+.light-mode {
+  --color-bg: #f5f5f5;
+  --color-surface: rgba(0, 0, 0, 0.04);
+  --color-surface-hover: rgba(0, 0, 0, 0.06);
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-hover: rgba(0, 0, 0, 0.12);
+  --color-text: #1a1a1a;
+  --color-text-secondary: #6b7280;
+}
+
+.light-mode body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+.light-mode .glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.light-mode .glass-card:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.light-mode .input-field {
+  background: white;
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #1a1a1a;
+}
+
+.light-mode .input-field::placeholder {
+  color: #9ca3af;
+}
+
+.light-mode .sidebar-link {
+  color: #6b7280;
+}
+
+.light-mode .sidebar-link:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1a1a1a;
+}
+
+.light-mode .sidebar-link.active {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--color-primary);
+}
+
+.light-mode .table-row:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.light-mode .badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #4b5563;
+}
+
+.light-mode .badge-direction {
+  background: rgba(255, 59, 48, 0.1);
+  border-color: rgba(255, 59, 48, 0.2);
+  color: #dc2626;
+}
+
+.light-mode .badge-encadrant {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+  color: #2563eb;
+}
+
+.light-mode .badge-user {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: #059669;
+}

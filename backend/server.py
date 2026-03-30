@@ -457,9 +457,13 @@ async def assign_user_to_domaine(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_encadrant_or_direction)
 ):
-    """Assign a user to a domaine"""
+    """Assign a user to a domaine. If user is Encadrant, also assign to all tools in domaine."""
     # Check domaine exists
-    domaine_result = await db.execute(select(Domaine).where(Domaine.id == domaine_id))
+    domaine_result = await db.execute(
+        select(Domaine)
+        .options(selectinload(Domaine.outils))
+        .where(Domaine.id == domaine_id)
+    )
     domaine = domaine_result.scalar_one_or_none()
     if not domaine:
         raise HTTPException(status_code=404, detail="Domaine not found")
@@ -485,13 +489,43 @@ async def assign_user_to_domaine(
         domaine_id=domaine_id
     )
     db.add(user_domaine)
+    
+    # If user is Encadrant, auto-assign to all tools in this domaine with 'conduc' role
+    tools_assigned = []
+    if user.role_global == 'encadrant' and domaine.outils:
+        for outil in domaine.outils:
+            # Check if not already assigned
+            existing_outil = await db.execute(
+                select(UserOutil).where(
+                    UserOutil.user_id == assignment.user_id,
+                    UserOutil.outil_id == outil.id
+                )
+            )
+            if not existing_outil.scalar_one_or_none():
+                # Assign with first available role or 'conduc' if available
+                role = 'conduc' if 'conduc' in (outil.roles_disponibles or []) else (outil.roles_disponibles[0] if outil.roles_disponibles else 'viewer')
+                user_outil = UserOutil(
+                    user_id=assignment.user_id,
+                    outil_id=outil.id,
+                    role=role
+                )
+                db.add(user_outil)
+                tools_assigned.append({"outil": outil.nom, "role": role})
+    
     await db.commit()
     
     await log_action(db, "assign_user_domaine", "user_domaine", f"{assignment.user_id}:{domaine_id}",
-                     current_user.id, {"user_id": str(assignment.user_id), "domaine": domaine.nom},
+                     current_user.id, {
+                         "user_id": str(assignment.user_id), 
+                         "domaine": domaine.nom,
+                         "auto_tools_assigned": tools_assigned
+                     },
                      request.client.host if request.client else None)
     
-    return {"message": "User assigned to domaine successfully"}
+    return {
+        "message": "User assigned to domaine successfully",
+        "auto_tools_assigned": tools_assigned if tools_assigned else None
+    }
 
 @api_router.delete("/domaines/{domaine_id}/unassign/{user_id}")
 async def unassign_user_from_domaine(
@@ -644,6 +678,48 @@ async def delete_outil(
                      {"nom": nom}, request.client.host if request.client else None)
     
     return {"message": "Outil deleted successfully"}
+
+@api_router.get("/outils/{outil_id}/users")
+async def get_outil_users(
+    outil_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_encadrant_or_direction)
+):
+    """Get all users assigned to an outil (Direction sees all, Encadrant sees users in their domaines)"""
+    # Get outil with domaine
+    outil_result = await db.execute(
+        select(Outil)
+        .options(selectinload(Outil.users).selectinload(UserOutil.user))
+        .where(Outil.id == outil_id)
+    )
+    outil = outil_result.scalar_one_or_none()
+    
+    if not outil:
+        raise HTTPException(status_code=404, detail="Outil not found")
+    
+    # For Encadrant, check if they have access to this outil's domaine
+    if current_user.role_global == 'encadrant':
+        # Get user's domaines
+        user_domaines_result = await db.execute(
+            select(UserDomaine.domaine_id).where(UserDomaine.user_id == current_user.id)
+        )
+        user_domaine_ids = [row[0] for row in user_domaines_result.fetchall()]
+        
+        if outil.domaine_id not in user_domaine_ids:
+            raise HTTPException(status_code=403, detail="Access denied to this outil's users")
+    
+    return [
+        {
+            "user_id": str(uo.user.id),
+            "email": uo.user.email,
+            "nom": uo.user.nom,
+            "prenom": uo.user.prenom,
+            "role_global": uo.user.role_global,
+            "outil_role": uo.role,
+            "assigned_at": uo.assigned_at.isoformat() if uo.assigned_at else None
+        }
+        for uo in outil.users if uo.user
+    ]
 
 @api_router.post("/outils/{outil_id}/assign")
 async def assign_user_to_outil(

@@ -9,6 +9,7 @@ import Domaines from './pages/Domaines';
 import Outils from './pages/Outils';
 import OutilPage from './pages/OutilPage';
 import AuditLogs from './pages/AuditLogs';
+import Profile from './pages/Profile';
 import { Toaster } from './components/ui/sonner';
 
 function ProtectedRoute({ children, roles }) {
@@ -118,6 +119,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute roles={['direction']}>
             <AuditLogs />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
           </ProtectedRoute>
         }
       />
