@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { domainesApi, usersApi, formatApiError } from '../lib/api';
 import { 
-  Plus, Search, Edit2, Trash2, Users, Wrench,
-  AlertCircle, ChevronDown, ChevronUp, UserPlus, X
+  Plus, Search, Edit2, Trash2, Wrench,
+  AlertCircle, ChevronDown, ChevronUp, UserPlus, X, Layers
 } from 'lucide-react';
 import {
   Dialog,
@@ -110,17 +110,6 @@ export default function Domaines() {
     }
   };
 
-  const handleUnassignUser = async (domaineId, userId) => {
-    if (!window.confirm('Retirer cet utilisateur du domaine ?')) return;
-    
-    try {
-      await domainesApi.unassignUser(domaineId, userId);
-      fetchData();
-    } catch (err) {
-      setError(formatApiError(err));
-    }
-  };
-
   const handleDelete = async (domaineId) => {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer ce domaine ?')) return;
     
@@ -165,7 +154,7 @@ export default function Domaines() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400">
           <AlertCircle size={20} />
           <span>{error}</span>
           <button onClick={() => setError('')} className="ml-auto">
@@ -176,110 +165,125 @@ export default function Domaines() {
 
       {/* Search */}
       <div className="relative">
-        <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+        <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Rechercher un domaine..."
-          className="w-full pl-10 pr-4 py-3 input-field"
+          className="w-full pl-12 pr-4 py-3.5 input-field rounded-xl"
           data-testid="domaine-search-input"
         />
       </div>
 
-      {/* Domaines List */}
-      <div className="space-y-4">
-        {filteredDomaines.map((domaine) => (
-          <div key={domaine.id} className="glass-card overflow-hidden" data-testid={`domaine-card-${domaine.id}`}>
+      {/* Domaines Grid - 3 columns */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredDomaines.map((domaine) => {
+          const isExpanded = expandedDomaine === domaine.id;
+          
+          return (
             <div 
-              className="p-5 flex items-center justify-between cursor-pointer hover:bg-white/[0.02]"
-              onClick={() => setExpandedDomaine(expandedDomaine === domaine.id ? null : domaine.id)}
+              key={domaine.id} 
+              className="glass-card overflow-hidden flex flex-col"
+              data-testid={`domaine-card-${domaine.id}`}
             >
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-zinc-500/20 to-zinc-500/5 border border-zinc-500/10">
-                  <Wrench size={24} className="text-zinc-300" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg">{domaine.nom}</h3>
-                  {domaine.description && (
-                    <p className="text-zinc-400 text-sm mt-1">{domaine.description}</p>
-                  )}
-                  <div className="flex items-center gap-4 mt-2 text-sm text-zinc-500">
-                    <span className="flex items-center gap-1">
-                      <Wrench size={14} />
-                      {domaine.outils?.length || 0} outils
-                    </span>
+              <div className="p-5 flex-1">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-zinc-500/20 to-zinc-500/5 border border-zinc-500/10">
+                    <Layers size={20} className="text-zinc-300" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {isDirection && (
+                      <>
+                        <button
+                          onClick={() => openAssignModal(domaine)}
+                          className="p-1.5 text-zinc-400 hover:text-[#FF3B30] hover:bg-[#FF3B30]/10 rounded-lg transition-all"
+                          title="Assigner utilisateur"
+                          data-testid={`assign-domaine-${domaine.id}`}
+                        >
+                          <UserPlus size={16} />
+                        </button>
+                        <button
+                          onClick={() => openEditModal(domaine)}
+                          className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/[0.04] rounded-lg transition-all"
+                          title="Modifier"
+                          data-testid={`edit-domaine-${domaine.id}`}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(domaine.id)}
+                          className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                          title="Supprimer"
+                          data-testid={`delete-domaine-${domaine.id}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {isDirection && (
-                  <>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openAssignModal(domaine); }}
-                      className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
-                      title="Assigner utilisateur"
-                      data-testid={`assign-domaine-${domaine.id}`}
-                    >
-                      <UserPlus size={18} />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditModal(domaine); }}
-                      className="p-2 text-zinc-400 hover:text-white hover:bg-white/[0.04] rounded-lg transition-colors"
-                      title="Modifier"
-                      data-testid={`edit-domaine-${domaine.id}`}
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(domaine.id); }}
-                      className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                      title="Supprimer"
-                      data-testid={`delete-domaine-${domaine.id}`}
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </>
+
+                {/* Content */}
+                <h3 className="font-semibold text-lg mb-1">{domaine.nom}</h3>
+                {domaine.description && (
+                  <p className="text-sm text-zinc-400 mb-3 line-clamp-2">{domaine.description}</p>
                 )}
-                {expandedDomaine === domaine.id ? (
-                  <ChevronUp size={20} className="text-zinc-400" />
-                ) : (
-                  <ChevronDown size={20} className="text-zinc-400" />
+
+                {/* Stats */}
+                <div className="flex items-center gap-4 text-sm text-zinc-500">
+                  <button
+                    onClick={() => setExpandedDomaine(isExpanded ? null : domaine.id)}
+                    className="flex items-center gap-1.5 hover:text-white transition-colors"
+                  >
+                    <Wrench size={14} />
+                    <span>{domaine.outils?.length || 0} outils</span>
+                    {domaine.outils?.length > 0 && (
+                      isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                    )}
+                  </button>
+                </div>
+
+                {/* Expanded outils list */}
+                {isExpanded && domaine.outils?.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-2">
+                    {domaine.outils.map((outil) => (
+                      <div 
+                        key={outil.id} 
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+                      >
+                        <span className="text-sm font-medium">{outil.nom}</span>
+                        <div className="flex gap-1">
+                          {outil.roles_disponibles?.slice(0, 2).map((role) => (
+                            <span key={role} className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500">
+                              {role}
+                            </span>
+                          ))}
+                          {outil.roles_disponibles?.length > 2 && (
+                            <span className="text-xs text-zinc-600">+{outil.roles_disponibles.length - 2}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
-
-            {/* Expanded content - Outils list */}
-            {expandedDomaine === domaine.id && domaine.outils?.length > 0 && (
-              <div className="border-t border-white/[0.08] p-4 bg-white/[0.01]">
-                <h4 className="text-sm font-medium text-zinc-400 mb-3">Outils du domaine</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {domaine.outils.map((outil) => (
-                    <div key={outil.id} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
-                      <p className="font-medium">{outil.nom}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {outil.roles_disponibles?.map((role) => (
-                          <span key={role} className="badge text-xs">{role}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {filteredDomaines.length === 0 && (
-          <div className="text-center py-12 text-zinc-500">
-            Aucun domaine trouvé
+          <div className="col-span-full glass-card text-center py-16">
+            <Layers size={48} className="mx-auto mb-4 text-zinc-600" />
+            <p className="text-zinc-400">Aucun domaine trouvé</p>
           </div>
         )}
       </div>
 
       {/* Create/Edit Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="bg-[#0a0a0a] border border-white/[0.08] max-w-md">
+        <DialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/[0.08] max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               {editingDomaine ? 'Modifier le domaine' : 'Nouveau domaine'}
@@ -287,7 +291,7 @@ export default function Domaines() {
           </DialogHeader>
 
           {formError && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               <AlertCircle size={16} />
               <span>{formError}</span>
             </div>
@@ -300,7 +304,8 @@ export default function Domaines() {
                 type="text"
                 value={formData.nom}
                 onChange={(e) => setFormData(prev => ({ ...prev, nom: e.target.value }))}
-                className="w-full px-3 py-2 input-field"
+                className="w-full px-4 py-2.5 input-field rounded-xl"
+                placeholder="Ex: Production"
                 required
                 data-testid="domaine-nom-input"
               />
@@ -311,8 +316,9 @@ export default function Domaines() {
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 input-field resize-none"
+                className="w-full px-4 py-2.5 input-field resize-none rounded-xl"
                 rows={3}
+                placeholder="Description du domaine..."
                 data-testid="domaine-description-input"
               />
             </div>
@@ -321,14 +327,14 @@ export default function Domaines() {
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="flex-1 px-4 py-2 btn-secondary"
+                className="flex-1 px-4 py-2.5 btn-secondary rounded-xl"
               >
                 Annuler
               </button>
               <button
                 type="submit"
                 disabled={formLoading}
-                className="flex-1 px-4 py-2 btn-primary disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 btn-primary rounded-xl disabled:opacity-50"
                 data-testid="domaine-submit-btn"
               >
                 {formLoading ? 'Enregistrement...' : (editingDomaine ? 'Modifier' : 'Créer')}
@@ -340,15 +346,15 @@ export default function Domaines() {
 
       {/* Assign User Modal */}
       <Dialog open={isAssignModalOpen} onOpenChange={setIsAssignModalOpen}>
-        <DialogContent className="bg-[#0a0a0a] border border-white/[0.08] max-w-md">
+        <DialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/[0.08] max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
-              Assigner un utilisateur à "{assigningDomaine?.nom}"
+              Assigner à "{assigningDomaine?.nom}"
             </DialogTitle>
           </DialogHeader>
 
           {formError && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               <AlertCircle size={16} />
               <span>{formError}</span>
             </div>
@@ -360,7 +366,7 @@ export default function Domaines() {
               <select
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full px-3 py-2 input-field"
+                className="w-full px-4 py-2.5 input-field rounded-xl"
                 required
                 data-testid="assign-user-select"
               >
@@ -373,18 +379,22 @@ export default function Domaines() {
               </select>
             </div>
 
+            <p className="text-xs text-zinc-500">
+              Note: Si l'utilisateur est un Encadrant, il sera automatiquement assigné à tous les outils de ce domaine.
+            </p>
+
             <div className="flex gap-3 pt-4">
               <button
                 type="button"
                 onClick={() => setIsAssignModalOpen(false)}
-                className="flex-1 px-4 py-2 btn-secondary"
+                className="flex-1 px-4 py-2.5 btn-secondary rounded-xl"
               >
                 Annuler
               </button>
               <button
                 type="submit"
                 disabled={formLoading || !selectedUserId}
-                className="flex-1 px-4 py-2 btn-primary disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 btn-primary rounded-xl disabled:opacity-50"
                 data-testid="assign-submit-btn"
               >
                 {formLoading ? 'Assignation...' : 'Assigner'}

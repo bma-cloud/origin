@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 class BTPManagerAPITester:
-    def __init__(self, base_url="https://site-manager-175.preview.emergentagent.com"):
+    def __init__(self, base_url="https://btp-manager-9.preview.emergentagent.com"):
         self.base_url = base_url
         self.session = requests.Session()
         self.tests_run = 0
