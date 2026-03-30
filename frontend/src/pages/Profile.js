@@ -46,12 +46,12 @@ export default function Profile() {
   const getRoleColor = (role) => {
     const colors = {
       'direction': 'text-[#FF3B30]',
-      'conduc': 'text-blue-400',
+      'conduc': 'text-zinc-200',
       'viewer': 'text-zinc-400',
-      'mag': 'text-emerald-400',
-      'chef_de_file': 'text-amber-400',
-      'responsable_securite': 'text-purple-400',
-      'validateur': 'text-cyan-400'
+      'mag': 'text-zinc-300',
+      'chef_de_file': 'text-zinc-200',
+      'responsable_securite': 'text-zinc-300',
+      'validateur': 'text-zinc-300'
     };
     return colors[role] || 'text-zinc-400';
   };
@@ -120,7 +120,7 @@ export default function Profile() {
         {/* Domaines Assignés */}
         <div className="glass-card p-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Layers size={20} className="text-blue-400" />
+            <Layers size={20} className="text-zinc-400" />
             Mes Domaines
             <span className="text-sm text-zinc-500 font-normal">
               ({fullUserData?.domaines?.length || 0})
@@ -141,8 +141,8 @@ export default function Profile() {
                   className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.04] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-500/10">
-                      <Layers size={16} className="text-blue-400" />
+                    <div className="p-2 rounded-lg bg-white/[0.04]">
+                      <Layers size={16} className="text-zinc-400" />
                     </div>
                     <div>
                       <p className="font-medium">{domaine.domaine_nom}</p>
@@ -163,7 +163,7 @@ export default function Profile() {
         {/* Outils Assignés */}
         <div className="glass-card p-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Wrench size={20} className="text-emerald-400" />
+            <Wrench size={20} className="text-zinc-400" />
             Mes Outils
             <span className="text-sm text-zinc-500 font-normal">
               ({fullUserData?.outils?.length || 0})
@@ -185,8 +185,8 @@ export default function Profile() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-emerald-500/10">
-                        <Settings size={16} className="text-emerald-400" />
+                      <div className="p-2 rounded-lg bg-white/[0.04]">
+                        <Settings size={16} className="text-zinc-400" />
                       </div>
                       <div>
                         <p className="font-medium">{outil.outil_nom}</p>

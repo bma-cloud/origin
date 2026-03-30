@@ -62,8 +62,8 @@ export default function AuditLogs() {
   const getActionColor = (action) => {
     if (action.includes('delete') || action.includes('unassign')) return 'text-red-400';
     if (action.includes('create') || action.includes('register')) return 'text-emerald-400';
-    if (action.includes('update') || action.includes('assign')) return 'text-blue-400';
-    if (action === 'login') return 'text-amber-400';
+    if (action.includes('update') || action.includes('assign')) return 'text-zinc-300';
+    if (action === 'login') return 'text-zinc-200';
     return 'text-zinc-400';
   };
 
@@ -149,7 +149,7 @@ export default function AuditLogs() {
         </div>
         <div className="glass-card p-4">
           <p className="text-zinc-400 text-sm">Connexions</p>
-          <p className="text-2xl font-bold text-amber-400">
+          <p className="text-2xl font-bold text-zinc-200">
             {logs.filter(l => l.action === 'login').length}
           </p>
         </div>
@@ -161,7 +161,7 @@ export default function AuditLogs() {
         </div>
         <div className="glass-card p-4">
           <p className="text-zinc-400 text-sm">Modifications</p>
-          <p className="text-2xl font-bold text-blue-400">
+          <p className="text-2xl font-bold text-zinc-300">
             {logs.filter(l => l.action.includes('update') || l.action.includes('assign')).length}
           </p>
         </div>

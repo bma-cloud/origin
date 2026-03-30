@@ -202,14 +202,16 @@ export default function Outils() {
   );
 
   const getRoleColor = (role) => {
+    // Monochrome palette - only grey shades except for special roles
     const colors = {
       'direction': 'text-[#FF3B30]',
-      'conduc': 'text-blue-400',
+      'direction (accès total)': 'text-[#FF3B30]',
+      'conduc': 'text-zinc-200',
       'viewer': 'text-zinc-400',
-      'mag': 'text-emerald-400',
-      'chef_de_file': 'text-amber-400',
-      'responsable_securite': 'text-purple-400',
-      'validateur': 'text-cyan-400'
+      'mag': 'text-zinc-300',
+      'chef_de_file': 'text-zinc-200',
+      'responsable_securite': 'text-zinc-300',
+      'validateur': 'text-zinc-300'
     };
     return colors[role] || 'text-zinc-400';
   };
@@ -282,8 +284,8 @@ export default function Outils() {
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/10">
-                      <Settings size={24} className="text-emerald-400" />
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-zinc-500/20 to-zinc-500/5 border border-zinc-500/10">
+                      <Settings size={24} className="text-zinc-300" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-lg">{outil.nom}</h3>

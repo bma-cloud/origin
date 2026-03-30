@@ -81,12 +81,13 @@ export default function OutilPage() {
   const getRoleColor = (role) => {
     const colors = {
       'direction (accès total)': 'text-[#FF3B30]',
-      'conduc': 'text-blue-400',
+      'direction': 'text-[#FF3B30]',
+      'conduc': 'text-zinc-200',
       'viewer': 'text-zinc-400',
-      'mag': 'text-emerald-400',
-      'chef_de_file': 'text-amber-400',
-      'responsable_securite': 'text-purple-400',
-      'validateur': 'text-cyan-400'
+      'mag': 'text-zinc-300',
+      'chef_de_file': 'text-zinc-200',
+      'responsable_securite': 'text-zinc-300',
+      'validateur': 'text-zinc-300'
     };
     return colors[role] || 'text-zinc-400';
   };
@@ -146,8 +147,8 @@ export default function OutilPage() {
       <div className="glass-card p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="p-4 rounded-xl bg-emerald-500/10">
-              <Settings size={32} className="text-emerald-400" />
+            <div className="p-4 rounded-xl bg-gradient-to-br from-zinc-500/20 to-zinc-500/5 border border-zinc-500/10">
+              <Settings size={32} className="text-zinc-300" />
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">{outil?.nom}</h1>
@@ -274,7 +275,7 @@ export default function OutilPage() {
           {/* Available Roles */}
           <div className="glass-card p-6">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Users size={20} className="text-blue-400" />
+              <Users size={20} className="text-zinc-400" />
               Rôles disponibles pour cet outil
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -307,7 +308,7 @@ export default function OutilPage() {
           {canViewUsers && assignedUsers.length > 0 && (
             <div className="glass-card p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <UserCircle size={20} className="text-purple-400" />
+                <UserCircle size={20} className="text-zinc-400" />
                 Utilisateurs assignés
                 <span className="text-sm text-zinc-500 font-normal">({assignedUsers.length})</span>
               </h2>

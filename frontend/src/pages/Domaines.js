@@ -196,8 +196,8 @@ export default function Domaines() {
               onClick={() => setExpandedDomaine(expandedDomaine === domaine.id ? null : domaine.id)}
             >
               <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-blue-500/10">
-                  <Wrench size={24} className="text-blue-400" />
+                <div className="p-3 rounded-xl bg-gradient-to-br from-zinc-500/20 to-zinc-500/5 border border-zinc-500/10">
+                  <Wrench size={24} className="text-zinc-300" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg">{domaine.nom}</h3>

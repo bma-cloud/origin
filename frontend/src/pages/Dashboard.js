@@ -88,25 +88,22 @@ export default function Dashboard() {
           icon={Users}
           label="Utilisateurs"
           value={stats?.total_users || 0}
-          color="#FF3B30"
+          accent={true}
         />
         <StatCard
           icon={Layers}
           label="Domaines"
           value={stats?.total_domaines || 0}
-          color="#3B82F6"
         />
         <StatCard
           icon={Wrench}
           label="Outils"
           value={stats?.total_outils || 0}
-          color="#10B981"
         />
         <StatCard
           icon={FileText}
           label="Documents"
           value={stats?.total_documents || 0}
-          color="#F59E0B"
         />
       </div>
 
@@ -159,7 +156,7 @@ export default function Dashboard() {
               <ul className="space-y-2">
                 {user.domaines.map((d) => (
                   <li key={d.domaine_id} className="flex items-center gap-2 text-sm">
-                    <Layers size={16} className="text-[#3B82F6]" />
+                    <Layers size={16} className="text-zinc-400" />
                     {d.domaine_nom}
                   </li>
                 ))}
@@ -175,7 +172,7 @@ export default function Dashboard() {
                 {user.outils.map((o) => (
                   <li key={o.outil_id} className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2">
-                      <Wrench size={16} className="text-[#10B981]" />
+                      <Wrench size={16} className="text-zinc-400" />
                       {o.outil_nom}
                     </span>
                     <span className="badge">{o.role}</span>
@@ -192,7 +189,7 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, color }) {
+function StatCard({ icon: Icon, label, value, accent }) {
   return (
     <div className="glass-card p-5 transition-all duration-300 hover:scale-[1.02]" data-testid={`stat-${label.toLowerCase()}`}>
       <div className="flex items-start justify-between">
@@ -201,10 +198,9 @@ function StatCard({ icon: Icon, label, value, color }) {
           <p className="text-3xl font-bold mt-1">{value}</p>
         </div>
         <div 
-          className="p-3 rounded-xl"
-          style={{ backgroundColor: `${color}15` }}
+          className={`p-3 rounded-xl ${accent ? 'bg-[#FF3B30]/10' : 'bg-white/[0.04]'}`}
         >
-          <Icon size={24} style={{ color }} />
+          <Icon size={24} className={accent ? 'text-[#FF3B30]' : 'text-zinc-400'} />
         </div>
       </div>
     </div>
