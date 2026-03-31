@@ -1,34 +1,31 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase
-from typing import AsyncGenerator
 import os
+from motor.motor_asyncio import AsyncIOMotorClient
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/btp_manager")
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
-    pool_pre_ping=True
-)
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
 
-async_session_maker = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False
-)
+# Collections
+users_col = db["users"]
+domaines_col = db["domaines"]
+outils_col = db["outils"]
+user_domaines_col = db["user_domaines"]
+user_outils_col = db["user_outils"]
+audit_logs_col = db["audit_logs"]
+documents_col = db["documents"]
+chat_messages_col = db["chat_messages"]
 
-class Base(DeclarativeBase):
-    pass
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session_maker() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
+async def init_indexes():
+    """Create indexes for performance"""
+    await users_col.create_index("email", unique=True)
+    await users_col.create_index("id", unique=True)
+    await domaines_col.create_index("id", unique=True)
+    await domaines_col.create_index("nom", unique=True)
+    await outils_col.create_index("id", unique=True)
+    await user_domaines_col.create_index([("user_id", 1), ("domaine_id", 1)], unique=True)
+    await user_outils_col.create_index([("user_id", 1), ("outil_id", 1)], unique=True)
+    await audit_logs_col.create_index("timestamp")
+    await chat_messages_col.create_index("session_id")
+    await chat_messages_col.create_index("user_id")

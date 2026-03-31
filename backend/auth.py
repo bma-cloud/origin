@@ -2,19 +2,14 @@ import os
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
-from fastapi import HTTPException, Request, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from uuid import UUID
-
-from database import get_db
-from models import User
+from fastapi import HTTPException, Request
+from database import users_col
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
 def get_jwt_secret() -> str:
-    return os.environ.get("JWT_SECRET", "default-secret-change-me")
+    return os.environ.get("JWT_SECRET")
 
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
@@ -42,32 +37,30 @@ def create_refresh_token(user_id: str) -> str:
     }
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
-async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
-    # Try cookie first, then Authorization header
+async def get_current_user(request: Request):
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-    
+
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     try:
         payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
-        
-        user_id = UUID(payload["sub"])
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        
+
+        user_id = payload["sub"]
+        user = await users_col.find_one({"id": user_id}, {"_id": 0})
+
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
-        
-        if not user.is_active:
+
+        if not user.get("is_active", True):
             raise HTTPException(status_code=401, detail="User is inactive")
-        
+
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -75,9 +68,9 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def require_role(*allowed_roles):
-    """Decorator factory for role-based access control"""
-    async def role_checker(current_user: User = Depends(get_current_user)):
-        if current_user.role_global not in allowed_roles:
+    from fastapi import Depends
+    async def role_checker(current_user: dict = Depends(get_current_user)):
+        if current_user["role_global"] not in allowed_roles:
             raise HTTPException(
                 status_code=403,
                 detail=f"Access denied. Required role: {', '.join(allowed_roles)}"
@@ -85,6 +78,5 @@ def require_role(*allowed_roles):
         return current_user
     return role_checker
 
-# Shortcut dependencies
 require_direction = require_role("direction")
 require_encadrant_or_direction = require_role("direction", "encadrant")
