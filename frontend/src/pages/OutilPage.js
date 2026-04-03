@@ -76,9 +76,9 @@ export default function OutilPage() {
   const handleUseOutil = () => {
     if (!hasAccess) return;
     
-    // Si c'est l'outil "Fiche de File", rediriger vers FlowChantier
+    // Si c'est l'outil "Fiche de File", ouvrir FlowChantier dans un nouvel onglet
     if (outil?.nom === 'Fiche de File') {
-      navigate(`/outils/${outilId}/flowchantier`);
+      window.open(`/outils/${outilId}/flowchantier`, '_blank');
       return;
     }
     
