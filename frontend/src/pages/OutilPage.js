@@ -286,28 +286,40 @@ export default function OutilPage() {
               Rôles disponibles pour cet outil
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {outil?.roles_disponibles?.map((role) => (
-                <div 
-                  key={role} 
-                  className={`p-3 rounded-lg border ${
-                    userRole === role 
-                      ? 'bg-[#FF3B30]/10 border-[#FF3B30]/30' 
-                      : 'bg-white/[0.02] border-white/[0.06]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{role}</span>
-                    {userRole === role && (
-                      <span className="text-xs text-[#FF3B30]">Votre rôle</span>
+              {outil?.roles_disponibles?.map((role) => {
+                // Handle both string and object role formats
+                const roleName = typeof role === 'object' ? role.name : role;
+                const roleDescription = typeof role === 'object' ? role.description : null;
+                const rolePermissions = typeof role === 'object' && role.permissions 
+                  ? role.permissions 
+                  : getRolePermissions(roleName);
+                
+                return (
+                  <div 
+                    key={roleName} 
+                    className={`p-3 rounded-lg border ${
+                      userRole === roleName 
+                        ? 'bg-[#FF3B30]/10 border-[#FF3B30]/30' 
+                        : 'bg-white/[0.02] border-white/[0.06]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{roleName}</span>
+                      {userRole === roleName && (
+                        <span className="text-xs text-[#FF3B30]">Votre rôle</span>
+                      )}
+                    </div>
+                    {roleDescription && (
+                      <p className="text-xs text-zinc-500 mt-1">{roleDescription}</p>
                     )}
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(Array.isArray(rolePermissions) ? rolePermissions : []).map((perm) => (
+                        <span key={perm} className="text-xs text-zinc-500">{perm}</span>
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {getRolePermissions(role).map((perm) => (
-                      <span key={perm} className="text-xs text-zinc-500">{perm}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
