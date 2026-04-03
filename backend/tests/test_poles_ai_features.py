@@ -16,7 +16,7 @@ import requests
 import os
 import time
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://btp-manager-9.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://apply-direct-2.preview.emergentagent.com')
 
 # Test credentials
 ADMIN_EMAIL = "superdadmin@gmail.com"
