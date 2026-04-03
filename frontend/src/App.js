@@ -8,6 +8,7 @@ import Users from './pages/Users';
 import Domaines from './pages/Domaines';
 import Outils from './pages/Outils';
 import OutilPage from './pages/OutilPage';
+import FlowChantier from './pages/FlowChantier';
 import AuditLogs from './pages/AuditLogs';
 import Profile from './pages/Profile';
 import { Toaster } from './components/ui/sonner';
@@ -112,6 +113,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <OutilPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/outils/:outilId/flowchantier"
+        element={
+          <ProtectedRoute>
+            <FlowChantier />
           </ProtectedRoute>
         }
       />

@@ -1,261 +1,426 @@
+#!/usr/bin/env python3
+"""
+FlowChantier Backend API Testing Suite
+Tests all FlowChantier endpoints with authentication
+"""
+
 import requests
-import sys
 import json
+import sys
 from datetime import datetime
 
-class BTPManagerAPITester:
-    def __init__(self, base_url="https://apply-direct-2.preview.emergentagent.com"):
-        self.base_url = base_url
-        self.session = requests.Session()
-        self.tests_run = 0
-        self.tests_passed = 0
-        self.admin_token = None
-        self.created_user_id = None
-        self.created_domaine_id = None
-        self.created_outil_id = None
+# Configuration
+BACKEND_URL = "https://apply-direct-2.preview.emergentagent.com/api"
+TEST_EMAIL = "superdadmin@gmail.com"
+TEST_PASSWORD = "Superadmin123!"
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, cookies=None):
-        """Run a single API test"""
-        url = f"{self.base_url}/api/{endpoint}"
-        headers = {'Content-Type': 'application/json'}
+class FlowChantierTester:
+    def __init__(self):
+        self.session = requests.Session()
+        self.access_token = None
+        self.test_chantier_id = None
+        self.test_conducteur_id = None
+        self.prod_pole_id = None
+        self.fiche_de_file_tool_id = None
         
-        self.tests_run += 1
-        print(f"\n🔍 Testing {name}...")
-        print(f"   URL: {url}")
+    def log(self, message, level="INFO"):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {level}: {message}")
+        
+    def test_authentication(self):
+        """Test login and get access token"""
+        self.log("Testing authentication...")
         
         try:
-            if method == 'GET':
-                response = self.session.get(url, headers=headers)
-            elif method == 'POST':
-                response = self.session.post(url, json=data, headers=headers)
-            elif method == 'PUT':
-                response = self.session.put(url, json=data, headers=headers)
-            elif method == 'DELETE':
-                response = self.session.delete(url, headers=headers)
-
-            success = response.status_code == expected_status
-            if success:
-                self.tests_passed += 1
-                print(f"✅ Passed - Status: {response.status_code}")
-                try:
-                    response_data = response.json()
-                    if isinstance(response_data, dict) and len(response_data) <= 5:
-                        print(f"   Response: {response_data}")
-                    elif isinstance(response_data, list) and len(response_data) <= 3:
-                        print(f"   Response: {len(response_data)} items")
-                except:
-                    pass
+            response = self.session.post(
+                f"{BACKEND_URL}/auth/login",
+                json={"email": TEST_EMAIL, "password": TEST_PASSWORD},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.access_token = data.get("access_token")
+                self.log(f"✅ Authentication successful - Token: {self.access_token[:20]}...")
+                return True
             else:
-                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                try:
-                    error_data = response.json()
-                    print(f"   Error: {error_data}")
-                except:
-                    print(f"   Response text: {response.text[:200]}")
-
-            return success, response.json() if response.content else {}
-
+                self.log(f"❌ Authentication failed: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
         except Exception as e:
-            print(f"❌ Failed - Error: {str(e)}")
-            return False, {}
-
-    def test_health_check(self):
-        """Test health endpoints"""
-        print("\n=== HEALTH CHECK TESTS ===")
-        self.run_test("Root endpoint", "GET", "", 200)
-        self.run_test("Health endpoint", "GET", "health", 200)
-
-    def test_auth_flow(self):
-        """Test authentication flow"""
-        print("\n=== AUTHENTICATION TESTS ===")
-        
-        # Test login with admin credentials
-        login_data = {
-            "email": "superdadmin@gmail.com",
-            "password": "Superadmin123!"
-        }
-        success, response = self.run_test("Admin login", "POST", "auth/login", 200, login_data)
-        
-        if success and 'access_token' in response:
-            self.admin_token = response['access_token']
-            print(f"   Admin token obtained: {self.admin_token[:20]}...")
-            
-            # Test get current user
-            self.run_test("Get current user", "GET", "auth/me", 200)
-            
-            return True
-        else:
-            print("❌ Failed to get admin token, stopping auth tests")
+            self.log(f"❌ Authentication error: {str(e)}", "ERROR")
             return False
-
-    def test_dashboard_stats(self):
-        """Test dashboard statistics"""
-        print("\n=== DASHBOARD TESTS ===")
-        success, response = self.run_test("Dashboard stats", "GET", "dashboard/stats", 200)
+    
+    def test_prod_pole_and_tool(self):
+        """Test that PROD pole and Fiche de File tool exist"""
+        self.log("Testing PROD pole and Fiche de File tool creation...")
         
-        if success:
-            expected_keys = ['total_users', 'total_domaines', 'total_outils', 'total_documents']
-            for key in expected_keys:
-                if key in response:
-                    print(f"   {key}: {response[key]}")
+        try:
+            response = self.session.get(f"{BACKEND_URL}/domaines", timeout=10)
+            
+            if response.status_code == 200:
+                domaines = response.json()
+                prod_pole = None
+                
+                for domaine in domaines:
+                    if domaine["nom"] == "PROD":
+                        prod_pole = domaine
+                        self.prod_pole_id = domaine["id"]
+                        break
+                
+                if prod_pole:
+                    self.log(f"✅ PROD pole found: {prod_pole['nom']} - {prod_pole['description']}")
+                    
+                    # Check for Fiche de File tool
+                    fiche_tool = None
+                    for outil in prod_pole.get("outils", []):
+                        if outil["nom"] == "Fiche de File":
+                            fiche_tool = outil
+                            self.fiche_de_file_tool_id = outil["id"]
+                            break
+                    
+                    if fiche_tool:
+                        self.log(f"✅ Fiche de File tool found with roles: {fiche_tool['roles_disponibles']}")
+                        return True
+                    else:
+                        self.log("❌ Fiche de File tool not found in PROD pole", "ERROR")
+                        return False
                 else:
-                    print(f"   Missing key: {key}")
-
-    def test_users_management(self):
-        """Test user management endpoints"""
-        print("\n=== USER MANAGEMENT TESTS ===")
+                    self.log("❌ PROD pole not found", "ERROR")
+                    return False
+            else:
+                self.log(f"❌ Failed to get domaines: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error testing PROD pole: {str(e)}", "ERROR")
+            return False
+    
+    def test_conducteurs_crud(self):
+        """Test conducteurs CRUD operations"""
+        self.log("Testing conducteurs CRUD operations...")
         
-        # Get all users
-        success, users = self.run_test("Get all users", "GET", "users", 200)
-        if success:
-            print(f"   Found {len(users)} users")
-        
-        # Create a new user
-        new_user_data = {
-            "email": f"testuser_{datetime.now().strftime('%H%M%S')}@test.com",
-            "nom": "Test",
-            "prenom": "User",
-            "password": "TestPass123!",
-            "role_global": "user"
-        }
-        
-        success, response = self.run_test("Create new user", "POST", "users", 200, new_user_data)
-        if success and 'id' in response:
-            self.created_user_id = response['id']
-            print(f"   Created user ID: {self.created_user_id}")
-            
-            # Update the user
-            update_data = {"nom": "UpdatedTest"}
-            self.run_test("Update user", "PUT", f"users/{self.created_user_id}", 200, update_data)
-
-    def test_domaines_management(self):
-        """Test domaine management endpoints"""
-        print("\n=== DOMAINE MANAGEMENT TESTS ===")
-        
-        # Get all domaines
-        success, domaines = self.run_test("Get all domaines", "GET", "domaines", 200)
-        if success:
-            print(f"   Found {len(domaines)} domaines")
-            if domaines:
-                print(f"   First domaine: {domaines[0].get('nom', 'Unknown')}")
-        
-        # Create a new domaine
-        new_domaine_data = {
-            "nom": f"TestDomaine_{datetime.now().strftime('%H%M%S')}",
-            "description": "Test domaine created by automated test"
-        }
-        
-        success, response = self.run_test("Create new domaine", "POST", "domaines", 200, new_domaine_data)
-        if success and 'id' in response:
-            self.created_domaine_id = response['id']
-            print(f"   Created domaine ID: {self.created_domaine_id}")
-            
-            # Assign user to domaine if we have both
-            if self.created_user_id:
-                assign_data = {"user_id": self.created_user_id}
-                self.run_test("Assign user to domaine", "POST", f"domaines/{self.created_domaine_id}/assign", 200, assign_data)
-
-    def test_outils_management(self):
-        """Test outil management endpoints"""
-        print("\n=== OUTIL MANAGEMENT TESTS ===")
-        
-        # Get all outils
-        success, outils = self.run_test("Get all outils", "GET", "outils", 200)
-        if success:
-            print(f"   Found {len(outils)} outils")
-        
-        # Create a new outil (need a domaine first)
-        if self.created_domaine_id:
-            new_outil_data = {
-                "nom": f"TestOutil_{datetime.now().strftime('%H%M%S')}",
-                "domaine_id": self.created_domaine_id,
-                "roles_disponibles": ["conduc", "viewer", "chef_de_file"]
+        try:
+            # Create a conducteur
+            conducteur_data = {
+                "nom": "Dupont",
+                "prenom": "Jean",
+                "role": "conducteur",
+                "telephone": "0123456789",
+                "email": "jean.dupont@example.com"
             }
             
-            success, response = self.run_test("Create new outil", "POST", "outils", 200, new_outil_data)
-            if success and 'id' in response:
-                self.created_outil_id = response['id']
-                print(f"   Created outil ID: {self.created_outil_id}")
+            response = self.session.post(
+                f"{BACKEND_URL}/flowchantier/conducteurs",
+                json=conducteur_data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                conducteur = response.json()
+                self.test_conducteur_id = conducteur["id"]
+                self.log(f"✅ Conducteur created: {conducteur['prenom']} {conducteur['nom']} (ID: {conducteur['id']})")
+            else:
+                self.log(f"❌ Failed to create conducteur: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Get all conducteurs
+            response = self.session.get(f"{BACKEND_URL}/flowchantier/conducteurs", timeout=10)
+            
+            if response.status_code == 200:
+                conducteurs = response.json()
+                self.log(f"✅ Retrieved {len(conducteurs)} conducteurs")
                 
-                # Assign user to outil with role
-                if self.created_user_id:
-                    assign_data = {
-                        "user_id": self.created_user_id,
-                        "role": "viewer"
-                    }
-                    self.run_test("Assign user to outil", "POST", f"outils/{self.created_outil_id}/assign", 200, assign_data)
+                # Verify our created conducteur is in the list
+                found = any(c["id"] == self.test_conducteur_id for c in conducteurs)
+                if found:
+                    self.log("✅ Created conducteur found in list")
+                    return True
+                else:
+                    self.log("❌ Created conducteur not found in list", "ERROR")
+                    return False
+            else:
+                self.log(f"❌ Failed to get conducteurs: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error testing conducteurs: {str(e)}", "ERROR")
+            return False
+    
+    def test_chantiers_crud(self):
+        """Test chantiers CRUD operations"""
+        self.log("Testing chantiers CRUD operations...")
+        
+        try:
+            # Create a chantier
+            chantier_data = {
+                "nom": "Rénovation Maison Moderne",
+                "client": "Société ABC",
+                "adresse": "123 Rue de la Paix, 75001 Paris",
+                "description": "Rénovation complète d'une maison moderne avec extension"
+            }
+            
+            response = self.session.post(
+                f"{BACKEND_URL}/flowchantier/chantiers",
+                json=chantier_data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                chantier = response.json()
+                self.test_chantier_id = chantier["id"]
+                self.log(f"✅ Chantier created: {chantier['nom']} (Ref: {chantier['reference']}, ID: {chantier['id']})")
+                self.log(f"   Current step: {chantier['current_step']}")
+            else:
+                self.log(f"❌ Failed to create chantier: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Get all chantiers
+            response = self.session.get(f"{BACKEND_URL}/flowchantier/chantiers", timeout=10)
+            
+            if response.status_code == 200:
+                chantiers = response.json()
+                self.log(f"✅ Retrieved {len(chantiers)} chantiers")
+            else:
+                self.log(f"❌ Failed to get chantiers: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Get single chantier
+            response = self.session.get(f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}", timeout=10)
+            
+            if response.status_code == 200:
+                chantier = response.json()
+                self.log(f"✅ Retrieved single chantier: {chantier['nom']}")
+            else:
+                self.log(f"❌ Failed to get single chantier: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Update chantier - assign conducteur
+            update_data = {
+                "conducteur_id": self.test_conducteur_id,
+                "description": "Rénovation complète avec conducteur assigné"
+            }
+            
+            response = self.session.put(
+                f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}",
+                json=update_data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                updated_chantier = response.json()
+                self.log(f"✅ Chantier updated with conducteur: {updated_chantier['conducteur_id']}")
+                return True
+            else:
+                self.log(f"❌ Failed to update chantier: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error testing chantiers CRUD: {str(e)}", "ERROR")
+            return False
+    
+    def test_workflow_operations(self):
+        """Test workflow operations (start, validate, skip, go-to-step)"""
+        self.log("Testing workflow operations...")
+        
+        try:
+            # Start workflow
+            response = self.session.post(
+                f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}/start",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                chantier = response.json()
+                self.log(f"✅ Workflow started - Current step: {chantier['current_step']}")
+                
+                if chantier['current_step'] != 1:
+                    self.log(f"❌ Expected step 1, got step {chantier['current_step']}", "ERROR")
+                    return False
+            else:
+                self.log(f"❌ Failed to start workflow: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Validate current step (step 1)
+            response = self.session.post(
+                f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}/validate-step",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                chantier = response.json()
+                self.log(f"✅ Step 1 validated - Current step: {chantier['current_step']}")
+                
+                if chantier['current_step'] != 2:
+                    self.log(f"❌ Expected step 2, got step {chantier['current_step']}", "ERROR")
+                    return False
+                    
+                # Check step status
+                step1_status = chantier['steps_status']['1']
+                if step1_status['status'] != 'validated':
+                    self.log(f"❌ Step 1 status should be 'validated', got '{step1_status['status']}'", "ERROR")
+                    return False
+            else:
+                self.log(f"❌ Failed to validate step: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Skip current step (step 2)
+            response = self.session.post(
+                f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}/skip-step",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                chantier = response.json()
+                self.log(f"✅ Step 2 skipped - Current step: {chantier['current_step']}")
+                
+                if chantier['current_step'] != 3:
+                    self.log(f"❌ Expected step 3, got step {chantier['current_step']}", "ERROR")
+                    return False
+                    
+                # Check step status
+                step2_status = chantier['steps_status']['2']
+                if step2_status['status'] != 'skipped' or not step2_status['skipped']:
+                    self.log(f"❌ Step 2 should be skipped, got status: {step2_status}", "ERROR")
+                    return False
+            else:
+                self.log(f"❌ Failed to skip step: {response.status_code} - {response.text}", "ERROR")
+                return False
+            
+            # Go back to step 1
+            response = self.session.post(
+                f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}/go-to-step/1",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                chantier = response.json()
+                self.log(f"✅ Went back to step 1 - Current step: {chantier['current_step']}")
+                
+                if chantier['current_step'] != 1:
+                    self.log(f"❌ Expected step 1, got step {chantier['current_step']}", "ERROR")
+                    return False
+                    
+                return True
+            else:
+                self.log(f"❌ Failed to go to step 1: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error testing workflow operations: {str(e)}", "ERROR")
+            return False
+    
+    def test_stats(self):
+        """Test statistics endpoint"""
+        self.log("Testing statistics endpoint...")
+        
+        try:
+            response = self.session.get(f"{BACKEND_URL}/flowchantier/stats", timeout=10)
+            
+            if response.status_code == 200:
+                stats = response.json()
+                self.log(f"✅ Stats retrieved:")
+                self.log(f"   Total chantiers: {stats['total']}")
+                self.log(f"   En cours: {stats['en_cours']}")
+                self.log(f"   À assigner: {stats['a_assigner']}")
+                self.log(f"   Terminés: {stats['termines']}")
+                
+                # Verify stats make sense
+                if stats['total'] >= 1:  # We created at least one chantier
+                    return True
+                else:
+                    self.log("❌ Stats don't reflect created chantier", "ERROR")
+                    return False
+            else:
+                self.log(f"❌ Failed to get stats: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error testing stats: {str(e)}", "ERROR")
+            return False
+    
+    def test_delete_chantier(self):
+        """Test deleting the test chantier"""
+        self.log("Testing chantier deletion...")
+        
+        try:
+            response = self.session.delete(
+                f"{BACKEND_URL}/flowchantier/chantiers/{self.test_chantier_id}",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.log(f"✅ Chantier deleted: {result['message']}")
+                return True
+            else:
+                self.log(f"❌ Failed to delete chantier: {response.status_code} - {response.text}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"❌ Error deleting chantier: {str(e)}", "ERROR")
+            return False
+    
+    def run_all_tests(self):
+        """Run all tests in sequence"""
+        self.log("=" * 60)
+        self.log("STARTING FLOWCHANTIER BACKEND API TESTS")
+        self.log("=" * 60)
+        
+        tests = [
+            ("Authentication", self.test_authentication),
+            ("PROD Pole & Fiche de File Tool", self.test_prod_pole_and_tool),
+            ("Conducteurs CRUD", self.test_conducteurs_crud),
+            ("Chantiers CRUD", self.test_chantiers_crud),
+            ("Workflow Operations", self.test_workflow_operations),
+            ("Statistics", self.test_stats),
+            ("Chantier Deletion", self.test_delete_chantier)
+        ]
+        
+        results = {}
+        
+        for test_name, test_func in tests:
+            self.log(f"\n--- Testing {test_name} ---")
+            try:
+                results[test_name] = test_func()
+            except Exception as e:
+                self.log(f"❌ Test {test_name} failed with exception: {str(e)}", "ERROR")
+                results[test_name] = False
+        
+        # Summary
+        self.log("\n" + "=" * 60)
+        self.log("TEST RESULTS SUMMARY")
+        self.log("=" * 60)
+        
+        passed = 0
+        total = len(results)
+        
+        for test_name, result in results.items():
+            status = "✅ PASS" if result else "❌ FAIL"
+            self.log(f"{test_name}: {status}")
+            if result:
+                passed += 1
+        
+        self.log(f"\nOverall: {passed}/{total} tests passed")
+        
+        if passed == total:
+            self.log("🎉 ALL TESTS PASSED!")
+            return True
         else:
-            print("   Skipping outil creation - no domaine available")
-
-    def test_audit_logs(self):
-        """Test audit logs endpoint"""
-        print("\n=== AUDIT LOGS TESTS ===")
-        success, logs = self.run_test("Get audit logs", "GET", "audit-logs?limit=10", 200)
-        if success:
-            print(f"   Found {len(logs)} audit logs")
-            if logs:
-                print(f"   Latest log action: {logs[0].get('action', 'Unknown')}")
-
-    def test_logout(self):
-        """Test logout"""
-        print("\n=== LOGOUT TEST ===")
-        self.run_test("Logout", "POST", "auth/logout", 200)
-
-    def cleanup(self):
-        """Clean up created resources"""
-        print("\n=== CLEANUP ===")
-        
-        # Delete created outil
-        if self.created_outil_id:
-            self.run_test("Delete outil", "DELETE", f"outils/{self.created_outil_id}", 200)
-        
-        # Delete created domaine
-        if self.created_domaine_id:
-            self.run_test("Delete domaine", "DELETE", f"domaines/{self.created_domaine_id}", 200)
-        
-        # Delete created user
-        if self.created_user_id:
-            self.run_test("Delete user", "DELETE", f"users/{self.created_user_id}", 200)
+            self.log(f"⚠️  {total - passed} tests failed")
+            return False
 
 def main():
-    print("🚀 Starting BTP Manager API Tests")
-    print("=" * 50)
+    """Main test runner"""
+    tester = FlowChantierTester()
+    success = tester.run_all_tests()
     
-    tester = BTPManagerAPITester()
-    
-    try:
-        # Run all tests
-        tester.test_health_check()
-        
-        if tester.test_auth_flow():
-            tester.test_dashboard_stats()
-            tester.test_users_management()
-            tester.test_domaines_management()
-            tester.test_outils_management()
-            tester.test_audit_logs()
-            tester.test_logout()
-            tester.cleanup()
-        else:
-            print("❌ Authentication failed, skipping other tests")
-            return 1
-        
-    except Exception as e:
-        print(f"❌ Test suite failed with error: {str(e)}")
-        return 1
-    
-    # Print final results
-    print("\n" + "=" * 50)
-    print(f"📊 FINAL RESULTS")
-    print(f"Tests run: {tester.tests_run}")
-    print(f"Tests passed: {tester.tests_passed}")
-    print(f"Success rate: {(tester.tests_passed/tester.tests_run*100):.1f}%")
-    
-    if tester.tests_passed == tester.tests_run:
-        print("🎉 All tests passed!")
-        return 0
+    if success:
+        print("\n✅ All FlowChantier backend tests completed successfully!")
+        sys.exit(0)
     else:
-        print(f"❌ {tester.tests_run - tester.tests_passed} tests failed")
-        return 1
+        print("\n❌ Some tests failed. Check the logs above for details.")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
