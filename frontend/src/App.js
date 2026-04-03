@@ -36,6 +36,29 @@ function ProtectedRoute({ children, roles }) {
   return <Layout>{children}</Layout>;
 }
 
+// Route protégée SANS Layout (pour les outils en plein écran)
+function ProtectedRouteFullscreen({ children, roles }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="w-10 h-10 border-2 border-[#FF3B30]/30 border-t-[#FF3B30] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (roles && !roles.includes(user.role_global)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
 
@@ -119,9 +142,9 @@ function AppRoutes() {
       <Route
         path="/outils/:outilId/flowchantier"
         element={
-          <ProtectedRoute>
+          <ProtectedRouteFullscreen>
             <FlowChantier />
-          </ProtectedRoute>
+          </ProtectedRouteFullscreen>
         }
       />
       <Route
