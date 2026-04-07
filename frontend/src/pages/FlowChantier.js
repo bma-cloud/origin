@@ -400,8 +400,11 @@ function VueFiche({ fiche: initialFiche, onBack, onOpenEtape }) {
           </h1>
           <div className="flex items-center gap-2 mt-1.5">
             <code className="text-xs bg-[#f4f4f5] border border-[#e4e4e7] px-2 py-0.5 rounded font-mono text-[#71717a]">
-              {fiche.code}
+              {fiche.code_marche || fiche.code}
             </code>
+            {fiche.code_marche && (
+              <code className="text-xs text-[#a1a1aa] font-mono">{fiche.code}</code>
+            )}
             {fiche.societe?.libelle && (
               <span className="text-xs text-[#71717a]">{fiche.societe.libelle}</span>
             )}
@@ -560,6 +563,7 @@ function VueGlobale({ fiches, onSelect, search, setSearch }) {
       if (!search) return true;
       const q = search.toLowerCase();
       return (
+        f.code_marche?.toLowerCase().includes(q) ||
         f.code?.toLowerCase().includes(q) ||
         f.nom?.toLowerCase().includes(q) ||
         f.nom_complet?.toLowerCase().includes(q) ||
@@ -710,7 +714,7 @@ function VueGlobale({ fiches, onSelect, search, setSearch }) {
 
                     {/* Code + arrow */}
                     <div className="flex items-center justify-between mt-3">
-                      <code className="text-[10px] text-[#a1a1aa] font-mono">{f.code}</code>
+                      <code className="text-[10px] text-[#a1a1aa] font-mono">{f.code_marche || f.code}</code>
                       <ArrowRight size={14} className="text-[#d4d4d8] group-hover:text-[#D32F2F] transition-colors" />
                     </div>
                   </div>
