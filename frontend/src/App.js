@@ -21,8 +21,8 @@ function ProtectedRoute({ children, roles }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="w-10 h-10 border-2 border-[#FF3B30]/30 border-t-[#FF3B30] rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
+        <div className="w-10 h-10 border-2 border-[#D32F2F]/20 border-t-[#D32F2F] rounded-full animate-spin" />
       </div>
     );
   }
@@ -44,8 +44,8 @@ function ProtectedRouteFullscreen({ children, roles }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="w-10 h-10 border-2 border-[#FF3B30]/30 border-t-[#FF3B30] rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
+        <div className="w-10 h-10 border-2 border-[#D32F2F]/20 border-t-[#D32F2F] rounded-full animate-spin" />
       </div>
     );
   }
@@ -66,8 +66,8 @@ function PublicRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="w-10 h-10 border-2 border-[#FF3B30]/30 border-t-[#FF3B30] rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
+        <div className="w-10 h-10 border-2 border-[#D32F2F]/20 border-t-[#D32F2F] rounded-full animate-spin" />
       </div>
     );
   }

@@ -119,6 +119,11 @@ async def sync_chantiers():
         if nom_ca.strip().lower() in ("none none", "none"):
             nom_ca = ""
 
+        # Conducteur de travaux
+        nom_cond = c.get("nom_conducteur") or ""
+        if nom_cond.strip().lower() in ("none none", "none"):
+            nom_cond = ""
+
         operations.append(
             UpdateOne(
                 # Filtre : clé de déduplication sur l'identifiant Optim
@@ -129,6 +134,7 @@ async def sync_chantiers():
                         "optim_id":           c["id_optim"],
                         "code":               c["code"],
                         "nom":                c["nom"],
+                        "nom_complet":        c.get("nom_complet") or c["nom"],
                         "etat":               c.get("etat"),
                         "date_debut_prevue":  _format_date(c.get("date_debut_prevue")),
                         "date_fin_prevue":    _format_date(c.get("date_fin_prevue")),
@@ -138,6 +144,23 @@ async def sync_chantiers():
                             "nom_complet": nom_ca,
                             "initiales":   c.get("initiales_ca") or "",
                             "fonction":    c.get("fonction_ca") or "",
+                        },
+                        "conducteur": {
+                            "nom_complet": nom_cond,
+                            "fonction":    c.get("fonction_conducteur") or "",
+                        },
+                        "client": {
+                            "raison_sociale": c.get("client_raison_sociale") or "",
+                            "nom_reduit":     c.get("client_nom_reduit") or "",
+                        },
+                        "societe": {
+                            "raison_sociale": c.get("societe") or "",
+                            "libelle":        c.get("societe_libelle") or "",
+                        },
+                        "adresse": {
+                            "ligne1": c.get("adresse_ligne1") or "",
+                            "cp":     c.get("adresse_cp") or "",
+                            "ville":  c.get("adresse_ville") or "",
                         },
                         "synced_at": now,
                     },

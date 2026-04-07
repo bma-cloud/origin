@@ -44,10 +44,15 @@ def _doc_depuis_optim(chantier: dict, now: str) -> dict:
     if nom_ca.strip().lower() in ("none none", "none"):
         nom_ca = ""
 
+    nom_cond = chantier.get("nom_conducteur") or ""
+    if nom_cond.strip().lower() in ("none none", "none"):
+        nom_cond = ""
+
     return {
         "optim_id":          chantier["id_optim"],
         "code":              chantier["code"],
         "nom":               chantier["nom"],
+        "nom_complet":       chantier.get("nom_complet") or chantier["nom"],
         "etat":              chantier.get("etat"),
         "date_debut_prevue": _format_date(chantier.get("date_debut_prevue")),
         "date_fin_prevue":   _format_date(chantier.get("date_fin_prevue")),
@@ -57,6 +62,23 @@ def _doc_depuis_optim(chantier: dict, now: str) -> dict:
             "nom_complet": nom_ca,
             "initiales":   chantier.get("initiales_ca") or "",
             "fonction":    chantier.get("fonction_ca") or "",
+        },
+        "conducteur": {
+            "nom_complet": nom_cond,
+            "fonction":    chantier.get("fonction_conducteur") or "",
+        },
+        "client": {
+            "raison_sociale": chantier.get("client_raison_sociale") or "",
+            "nom_reduit":     chantier.get("client_nom_reduit") or "",
+        },
+        "societe": {
+            "raison_sociale": chantier.get("societe") or "",
+            "libelle":        chantier.get("societe_libelle") or "",
+        },
+        "adresse": {
+            "ligne1": chantier.get("adresse_ligne1") or "",
+            "cp":     chantier.get("adresse_cp") or "",
+            "ville":  chantier.get("adresse_ville") or "",
         },
         "cf":        {"nom_complet": "", "initiales": ""},
         "etapes":    _build_etapes_initiales(),

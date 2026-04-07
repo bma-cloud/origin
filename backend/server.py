@@ -15,7 +15,8 @@ from uuid import uuid4
 from database import (
     init_indexes, users_col, domaines_col, outils_col,
     user_domaines_col, user_outils_col, audit_logs_col,
-    documents_col, chat_messages_col, chantiers_col, conducteurs_col
+    documents_col, chat_messages_col, chantiers_col, conducteurs_col,
+    fiche_chantiers_col
 )
 from auth import (
     hash_password, verify_password, create_access_token, create_refresh_token,
@@ -509,10 +510,31 @@ async def get_audit_logs(limit: int = 100, current_user: dict = Depends(require_
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    users_count = await users_col.count_documents({})
-    domaines_count = await domaines_col.count_documents({})
-    outils_count = await outils_col.count_documents({})
-    documents_count = await documents_col.count_documents({})
+    users_count, domaines_count, outils_count, documents_count = await asyncio.gather(
+        users_col.count_documents({}),
+        domaines_col.count_documents({}),
+        outils_col.count_documents({}),
+        documents_col.count_documents({}),
+    )
+
+    # Chantier stats depuis fiche_chantiers
+    total_chantiers, sans_cf = await asyncio.gather(
+        fiche_chantiers_col.count_documents({}),
+        fiche_chantiers_col.count_documents({"cf.nom_complet": ""}),
+    )
+
+    # Étapes en cours et terminées
+    etapes_pipeline = [
+        {"$unwind": "$etapes"},
+        {"$group": {
+            "_id": "$etapes.statut",
+            "count": {"$sum": 1}
+        }}
+    ]
+    etapes_stats = {doc["_id"]: doc["count"]
+                    async for doc in fiche_chantiers_col.aggregate(etapes_pipeline)}
+    etapes_en_cours = etapes_stats.get("en_cours", 0)
+    etapes_terminees = etapes_stats.get("termine", 0)
 
     logs = await audit_logs_col.find({}, NO_ID).sort("timestamp", -1).limit(5).to_list(5)
     recent = []
@@ -527,6 +549,10 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     return {
         "total_users": users_count, "total_domaines": domaines_count,
         "total_outils": outils_count, "total_documents": documents_count,
+        "total_chantiers": total_chantiers,
+        "chantiers_sans_cf": sans_cf,
+        "etapes_en_cours": etapes_en_cours,
+        "etapes_terminees": etapes_terminees,
         "recent_activity": recent
     }
 
