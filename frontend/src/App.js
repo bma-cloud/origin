@@ -9,6 +9,8 @@ import Domaines from './pages/Domaines';
 import Outils from './pages/Outils';
 import OutilPage from './pages/OutilPage';
 import FlowChantier from './pages/FlowChantier';
+import FicheChefDeFile from './pages/FicheChefDeFile';
+import Fiches from './pages/Fiches';
 import AuditLogs from './pages/AuditLogs';
 import Profile from './pages/Profile';
 import { Toaster } from './components/ui/sonner';
@@ -160,6 +162,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fiches"
+        element={
+          <ProtectedRoute>
+            <Fiches />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fiches/:code"
+        element={
+          <ProtectedRoute>
+            <FicheChefDeFile />
           </ProtectedRoute>
         }
       />

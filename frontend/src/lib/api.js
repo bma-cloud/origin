@@ -90,4 +90,11 @@ export const aiApi = {
   clearHistory: () => api.delete('/ai/history')
 };
 
+// Fiche Chef de File API
+export const ficheApi = {
+  get: (code) => api.get(`/fiches/${code}`),
+  updateCf: (code, data) => api.patch(`/fiches/${code}/cf`, data),
+  updateEtape: (code, numero, statut) => api.patch(`/fiches/${code}/etapes/${numero}`, { statut }),
+};
+
 export default api;

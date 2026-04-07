@@ -24,6 +24,9 @@ chat_messages_col = db["chat_messages"]
 chantiers_col = db["chantiers"]
 conducteurs_col = db["conducteurs"]
 
+# Fiche Chef de File — chantiers synchronisés depuis Optim BTP
+fiche_chantiers_col = db["fiche_chantiers"]
+
 async def init_indexes():
     """Create indexes for performance"""
     await users_col.create_index("email", unique=True)
@@ -41,3 +44,6 @@ async def init_indexes():
     await chantiers_col.create_index("reference", unique=True)
     await chantiers_col.create_index("updated_at")
     await conducteurs_col.create_index("id", unique=True)
+    # Fiche Chef de File
+    await fiche_chantiers_col.create_index("optim_id", unique=True)
+    await fiche_chantiers_col.create_index("code")

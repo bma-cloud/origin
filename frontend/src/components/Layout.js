@@ -17,12 +17,12 @@ import {
 import { useState } from 'react';
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['direction', 'encadrant', 'user'] },
-  { to: '/users', icon: Users, label: 'Utilisateurs', roles: ['direction', 'encadrant'] },
-  { to: '/domaines', icon: Layers, label: 'Pôles', roles: ['direction', 'encadrant', 'user'] },
-  { to: '/outils', icon: Wrench, label: 'Outils', roles: ['direction', 'encadrant', 'user'] },
-  { to: '/audit-logs', icon: FileText, label: 'Audit Logs', roles: ['direction'] },
-  { to: '/profile', icon: User, label: 'Mon Profil', roles: ['direction', 'encadrant', 'user'] }
+  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',    roles: ['direction', 'encadrant', 'user'] },
+  { to: '/users',      icon: Users,           label: 'Utilisateurs', roles: ['direction', 'encadrant'] },
+  { to: '/domaines',   icon: Layers,          label: 'Pôles',        roles: ['direction', 'encadrant', 'user'] },
+  { to: '/outils',     icon: Wrench,          label: 'Outils',       roles: ['direction', 'encadrant', 'user'] },
+  { to: '/audit-logs', icon: FileText,        label: 'Audit Logs',   roles: ['direction'] },
+  { to: '/profile',    icon: User,            label: 'Mon Profil',   roles: ['direction', 'encadrant', 'user'] },
 ];
 
 export default function Layout({ children }) {

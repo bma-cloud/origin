@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+import asyncio
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 import os
@@ -21,6 +22,8 @@ from auth import (
     get_current_user, require_direction, require_encadrant_or_direction
 )
 from audit import log_action
+from optim.router import optim_router, _sync_task
+from fiche_chef_de_file.router import fiche_router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -965,6 +968,8 @@ async def create_conducteur(request: Request, current_user: dict = Depends(get_c
 
 # Include router
 app.include_router(api_router)
+app.include_router(optim_router)
+app.include_router(fiche_router)
 
 # CORS
 app.add_middleware(
@@ -999,6 +1004,9 @@ async def startup():
             logger.info("Admin password updated")
 
     logger.info("BTP Manager API ready")
+
+    # Sync Optim BTP → MongoDB en tâche de fond (non bloquant)
+    asyncio.create_task(_sync_task())
 
     # Auto-create PROD pole and Fiche de File tool
     prod_pole = await domaines_col.find_one({"nom": "PROD"})
