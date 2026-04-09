@@ -6,32 +6,47 @@ import {
   ArrowLeft, Search, Building2, User, MapPin, Calendar,
   CheckCircle2, Clock, Circle, Pencil, Save, X,
   Loader2, ChevronRight, RefreshCw, Filter, Phone,
-  ArrowRight, ChevronLeft, HardHat, Briefcase
+  ArrowRight, ChevronLeft, HardHat, Briefcase,
+  Users, FileText, Plus, Trash2, Lock, Edit3,
+  TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
+import { Checkbox } from '../components/ui/checkbox';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../components/ui/select';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from '../components/ui/dialog';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '../components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
 // Configuration des 13 étapes
 // ---------------------------------------------------------------------------
 const ETAPES_CONFIG = {
-  1:  { label: "Ouverture d'affaire",        description: "Réception et enregistrement du dossier marché" },
-  2:  { label: "Constitution du dossier",     description: "Rassemblement des pièces administratives et techniques" },
-  3:  { label: "Étude technique & chiffrage", description: "Analyse des plans, quantitatifs et estimation" },
-  4:  { label: "Lancement des travaux",        description: "Planification des ressources et démarrage terrain" },
-  5:  { label: "Étape 5",  description: "" },
-  6:  { label: "Étape 6",  description: "" },
-  7:  { label: "Étape 7",  description: "" },
-  8:  { label: "Étape 8",  description: "" },
-  9:  { label: "Étape 9",  description: "" },
-  10: { label: "Étape 10", description: "" },
-  11: { label: "Étape 11", description: "" },
-  12: { label: "Étape 12", description: "" },
-  13: { label: "Clôture d'affaire", description: "Réception, solde financier et archivage du dossier" },
+  1:  { label: "Planification et affectation initiale",        description: "Mise au planning · définition des rôles · vérification dossier" },
+  2:  { label: "Contre-étude technique",                       description: "Validation technique avant lancement" },
+  3:  { label: "Préparation administrative et documentaire",   description: "PPSPS · fiche chantier · Fieldwire · points d'arrêt" },
+  4:  { label: "Visite chantier et cadrage opérationnel",      description: "Visite CF · définition besoins · préparation chantier" },
+  5:  { label: "Quantification et expression des besoins",     description: "EPI · matériel · quantitatif" },
+  6:  { label: "Planification détaillée d'exécution",          description: "Planning · jalons · affectation des tâches" },
+  7:  { label: "Approvisionnement et commandes",               description: "Commandes EPI / matériel / matériaux" },
+  8:  { label: "Préparation finale et contre-visite",          description: "Contrôle terrain · préparation logistique finale" },
+  9:  { label: "Installation et lancement du chantier",        description: "Installation · livraisons · réception matériel" },
+  10: { label: "Exécution et suivi chantier",                  description: "Autocontrôles · suivi · problèmes · avancement · Fieldwire" },
+  11: { label: "Réception des travaux et clôture documentaire",description: "PV · DOE · tamponné signé" },
+  12: { label: "Retour d'expérience et amélioration continue", description: "REX technique / appro / TU" },
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +100,10 @@ function progressPercent(etapes) {
 function formatDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value || 0);
 }
 
 function filterByPeriod(fiches, filter) {
@@ -208,9 +227,610 @@ function PersonneCard({ titre, personne, editable, onSave, icon: Icon = User }) 
 }
 
 // ---------------------------------------------------------------------------
+// ÉTAPE 1 — Planification et affectation initiale
+// ---------------------------------------------------------------------------
+function EtapePlanification({ fiche, onUpdate }) {
+  const [conducteurs, setConducteurs] = useState([]);
+  const [chefsDeFile, setChefsDeFile] = useState([]);
+  const [formData, setFormData] = useState({
+    planifie: false,
+    conducteur: '',
+    chef_de_file: '',
+    dossier: { acompte: false, os: false, contrat: false },
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showNewConducteurDialog, setShowNewConducteurDialog] = useState(false);
+  const [showNewChefDialog, setShowNewChefDialog] = useState(false);
+  const [newConducteur, setNewConducteur] = useState('');
+  const [newChef, setNewChef] = useState('');
+
+  // Charger les référentiels
+  useEffect(() => {
+    ficheApi.getConducteurs()
+      .then(r => setConducteurs(r.data || []))
+      .catch(() => {});
+    ficheApi.getChefsDeFile()
+      .then(r => setChefsDeFile(r.data || []))
+      .catch(() => {});
+  }, []);
+
+  // Initialiser depuis fiche
+  useEffect(() => {
+    if (fiche?.planification) {
+      setFormData({
+        planifie:     fiche.planification.planifie || false,
+        conducteur:   fiche.planification.conducteur || '',
+        chef_de_file: fiche.planification.chef_de_file || '',
+        dossier: {
+          acompte: fiche.planification.dossier?.acompte || false,
+          os:      fiche.planification.dossier?.os || false,
+          contrat: fiche.planification.dossier?.contrat || false,
+        },
+      });
+    }
+  }, [fiche]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await ficheApi.updatePlanification(fiche.code, formData);
+      if (onUpdate) await onUpdate();
+      toast.success('Planification enregistrée');
+      setHasChanges(false);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddConducteur = () => {
+    if (!newConducteur.trim()) return;
+    const entry = { id: `c-${Date.now()}`, nom: newConducteur.trim() };
+    setConducteurs(prev => [...prev, entry]);
+    setFormData(prev => ({ ...prev, conducteur: entry.nom }));
+    setNewConducteur('');
+    setShowNewConducteurDialog(false);
+    setHasChanges(true);
+    toast.success('Conducteur ajouté');
+  };
+
+  const handleAddChef = () => {
+    if (!newChef.trim()) return;
+    const entry = { id: `cf-${Date.now()}`, nom: newChef.trim() };
+    setChefsDeFile(prev => [...prev, entry]);
+    setFormData(prev => ({ ...prev, chef_de_file: entry.nom }));
+    setNewChef('');
+    setShowNewChefDialog(false);
+    setHasChanges(true);
+    toast.success('Chef de file ajouté');
+  };
+
+  const isDossierComplet =
+    formData.dossier.acompte && formData.dossier.os && formData.dossier.contrat;
+
+  return (
+    <div className="space-y-5">
+      {/* Bandeau modifications */}
+      {hasChanges && (
+        <div className="bg-red-50 border border-red-200 p-3 flex items-center justify-between">
+          <p className="text-sm text-red-700">Modifications non enregistrées</p>
+          <Button size="sm" onClick={handleSave} disabled={saving}
+            className="bg-red-600 hover:bg-red-700 text-white">
+            <Save className="h-4 w-4 mr-2" />
+            {saving ? '...' : 'Enregistrer'}
+          </Button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Card Équipe */}
+        <Card className="border border-neutral-200 bg-white">
+          <CardHeader>
+            <CardTitle className="text-xl font-medium flex items-center gap-2">
+              <Users className="h-5 w-5 text-neutral-400" />
+              Équipe chantier
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+
+            {/* Conducteur */}
+            <div className="space-y-2">
+              <Label htmlFor="conducteur"
+                className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                Conducteur de travaux *
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.conducteur}
+                  onValueChange={v => { setFormData(p => ({ ...p, conducteur: v })); setHasChanges(true); }}
+                >
+                  <SelectTrigger id="conducteur" className="flex-1">
+                    <SelectValue placeholder="Sélectionner un conducteur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {conducteurs.map(c => (
+                      <SelectItem key={c.id} value={c.nom}>{c.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Dialog open={showNewConducteurDialog} onOpenChange={setShowNewConducteurDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="icon"
+                      className="shrink-0 border-neutral-300 hover:border-neutral-400">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                      <DialogTitle>Nouveau conducteur</DialogTitle>
+                      <DialogDescription>Ajoutez un nouveau conducteur de travaux</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <Label htmlFor="new-conducteur">Nom complet</Label>
+                      <Input id="new-conducteur" value={newConducteur}
+                        onChange={e => setNewConducteur(e.target.value)}
+                        placeholder="Ex: Jean Dupont" className="mt-2"
+                        onKeyDown={e => e.key === 'Enter' && handleAddConducteur()} />
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowNewConducteurDialog(false)}>Annuler</Button>
+                      <Button onClick={handleAddConducteur} disabled={!newConducteur.trim()}
+                        className="bg-neutral-900 hover:bg-red-600 text-white">Ajouter</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+
+            {/* Chef de file */}
+            <div className="space-y-2">
+              <Label htmlFor="chef-de-file"
+                className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                Chef de file
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.chef_de_file}
+                  onValueChange={v => { setFormData(p => ({ ...p, chef_de_file: v })); setHasChanges(true); }}
+                >
+                  <SelectTrigger id="chef-de-file" className="flex-1">
+                    <SelectValue placeholder="Sélectionner un chef de file" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {chefsDeFile.map(c => (
+                      <SelectItem key={c.id} value={c.nom}>{c.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Dialog open={showNewChefDialog} onOpenChange={setShowNewChefDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="icon"
+                      className="shrink-0 border-neutral-300 hover:border-neutral-400">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                      <DialogTitle>Nouveau chef de file</DialogTitle>
+                      <DialogDescription>Ajoutez un nouveau chef de file</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <Label htmlFor="new-chef">Nom complet</Label>
+                      <Input id="new-chef" value={newChef}
+                        onChange={e => setNewChef(e.target.value)}
+                        placeholder="Ex: Sophie Leroy" className="mt-2"
+                        onKeyDown={e => e.key === 'Enter' && handleAddChef()} />
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowNewChefDialog(false)}>Annuler</Button>
+                      <Button onClick={handleAddChef} disabled={!newChef.trim()}
+                        className="bg-neutral-900 hover:bg-red-600 text-white">Ajouter</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+
+            <Separator className="my-4" />
+
+            {/* Checkbox planifié */}
+            <div className="flex items-center space-x-2">
+              <Checkbox id="planifie" checked={formData.planifie}
+                onCheckedChange={checked => { setFormData(p => ({ ...p, planifie: checked })); setHasChanges(true); }} />
+              <Label htmlFor="planifie" className="cursor-pointer text-sm font-medium">
+                Chantier planifié
+              </Label>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card Dossier */}
+        <Card className="border border-neutral-200 bg-white">
+          <CardHeader>
+            <CardTitle className="text-xl font-medium flex items-center gap-2">
+              <FileText className="h-5 w-5 text-neutral-400" />
+              Dossier complet
+              {isDossierComplet && (
+                <Badge className="bg-green-100 text-green-800 font-medium text-xs ml-2">Complet</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-neutral-600">Vérifiez que tous les documents sont présents</p>
+            <div className="space-y-3 mt-4">
+              {[
+                { key: 'acompte', label: 'Acompte reçu' },
+                { key: 'os',      label: 'Ordre de Service (OS)' },
+                { key: 'contrat', label: 'Contrat signé' },
+              ].map(({ key, label }) => (
+                <div key={key}
+                  className={`flex items-center justify-between p-4 border transition-colors ${
+                    formData.dossier[key] ? 'border-green-200 bg-green-50' : 'border-neutral-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <Checkbox id={key} checked={formData.dossier[key]}
+                      onCheckedChange={checked => {
+                        setFormData(p => ({ ...p, dossier: { ...p.dossier, [key]: checked } }));
+                        setHasChanges(true);
+                      }} />
+                    <Label htmlFor={key} className="cursor-pointer text-sm font-medium">{label}</Label>
+                  </div>
+                  {formData.dossier[key] && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bouton enregistrer bas de page */}
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving || !hasChanges}
+          className={`transition-colors ${
+            hasChanges ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-neutral-200 text-neutral-500 cursor-not-allowed'
+          }`}
+        >
+          <Save className="h-4 w-4 mr-2" />
+          {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ÉTAPE 2 — Contre-étude technique
+// ---------------------------------------------------------------------------
+function EtapeContreEtude({ fiche, onUpdate }) {
+  const [activeTab, setActiveTab] = useState('devis');
+  const [contreEtude, setContreEtude] = useState({
+    lignes: [], total_ht: 0, ecart_devis: 0, commentaire_global: '',
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [devis, setDevis] = useState({ lignes: [], total_ht: 0, tva: 0, total_ttc: 0 });
+  const [loadingDevis, setLoadingDevis] = useState(true);
+
+  // Charger le devis depuis Optim
+  useEffect(() => {
+    setLoadingDevis(true);
+    ficheApi.getDevis(fiche.code)
+      .then(r => setDevis(r.data))
+      .catch(() => {})
+      .finally(() => setLoadingDevis(false));
+  }, [fiche.code]);
+
+  useEffect(() => {
+    if (fiche?.contre_etude) {
+      setContreEtude({
+        lignes:            fiche.contre_etude.lignes || [],
+        total_ht:          fiche.contre_etude.total_ht || 0,
+        ecart_devis:       fiche.contre_etude.ecart_devis || 0,
+        commentaire_global: fiche.contre_etude.commentaire_global || '',
+      });
+    }
+  }, [fiche]);
+
+  const calculateTotals = (lignes) => {
+    const total_ht = lignes.reduce((sum, l) => sum + (l.montant || 0), 0);
+    const ecart_devis = total_ht - (devis.total_ht || 0);
+    return { total_ht, ecart_devis };
+  };
+
+  const handleUpdateLigne = (index, field, value) => {
+    const newLignes = [...contreEtude.lignes];
+    newLignes[index] = { ...newLignes[index], [field]: value };
+    if (field === 'quantite' || field === 'prix_unitaire') {
+      const q  = field === 'quantite'     ? parseFloat(value) || 0 : parseFloat(newLignes[index].quantite) || 0;
+      const pu = field === 'prix_unitaire' ? parseFloat(value) || 0 : parseFloat(newLignes[index].prix_unitaire) || 0;
+      newLignes[index].montant = q * pu;
+    }
+    setContreEtude({ ...contreEtude, lignes: newLignes, ...calculateTotals(newLignes) });
+    setHasChanges(true);
+  };
+
+  const handleDeleteLigne = (index) => {
+    const newLignes = contreEtude.lignes.filter((_, i) => i !== index);
+    setContreEtude({ ...contreEtude, lignes: newLignes, ...calculateTotals(newLignes) });
+    setHasChanges(true);
+  };
+
+  const handleAddLigne = () => {
+    const newLigne = { id: `ce-${Date.now()}`, designation: '', unite: '', quantite: 0, prix_unitaire: 0, montant: 0, commentaire: '' };
+    const newLignes = [...contreEtude.lignes, newLigne];
+    setContreEtude({ ...contreEtude, lignes: newLignes, ...calculateTotals(newLignes) });
+    setHasChanges(true);
+  };
+
+  const handleCopyFromDevis = () => {
+    if (!devis.lignes?.length) { toast.error('Aucune ligne de devis à copier'); return; }
+    const copied = devis.lignes.map(l => ({
+      ...l, id: `ce-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`, commentaire: '',
+    }));
+    setContreEtude({ ...contreEtude, lignes: copied, ...calculateTotals(copied) });
+    setHasChanges(true);
+    toast.success('Lignes copiées depuis le devis');
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await ficheApi.updateContreEtude(fiche.code, contreEtude);
+      if (onUpdate) await onUpdate();
+      toast.success('Contre-étude enregistrée');
+      setHasChanges(false);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Bandeau modifications */}
+      {hasChanges && (
+        <div className="bg-red-50 border border-red-200 p-3 flex items-center justify-between">
+          <p className="text-sm text-red-700">Modifications non enregistrées</p>
+          <Button size="sm" onClick={handleSave} disabled={saving}
+            className="bg-red-600 hover:bg-red-700 text-white">
+            <Save className="h-4 w-4 mr-2" />
+            {saving ? '...' : 'Enregistrer'}
+          </Button>
+        </div>
+      )}
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        {/* Header tabs */}
+        <div className="flex items-center justify-between mb-4">
+          <TabsList className="bg-neutral-100 border border-neutral-200 p-1">
+            <TabsTrigger value="devis" className="px-6 py-2 flex items-center gap-2">
+              <Lock className="h-4 w-4" /> Devis
+            </TabsTrigger>
+            <TabsTrigger value="contre-etude" className="px-6 py-2 flex items-center gap-2">
+              <Edit3 className="h-4 w-4" /> Contre-étude
+            </TabsTrigger>
+          </TabsList>
+          {activeTab === 'contre-etude' && (
+            <Button variant="outline" onClick={handleCopyFromDevis}
+              className="border-neutral-300 text-neutral-700 hover:bg-neutral-100">
+              Copier depuis devis
+            </Button>
+          )}
+        </div>
+
+        {/* Tab Devis (lecture seule) */}
+        <TabsContent value="devis">
+          <Card className="border border-neutral-200 bg-neutral-50">
+            {loadingDevis && (
+              <div className="flex items-center justify-center py-10 gap-2 text-neutral-400 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" /> Chargement du devis Optim…
+              </div>
+            )}
+            <CardHeader>
+              <CardTitle className="text-xl font-medium flex items-center gap-2">
+                <FileText className="h-5 w-5 text-neutral-400" />
+                Devis initial
+                <Badge className="bg-neutral-200 text-neutral-600 font-medium text-xs ml-2">Lecture seule</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-neutral-100">
+                    {['Désignation', 'Unité', 'Qté', 'P.U.', 'Montant'].map(h => (
+                      <TableHead key={h} className="text-xs font-semibold uppercase tracking-widest text-neutral-500">{h}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!devis.lignes?.length ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-neutral-500">Aucune ligne de devis</TableCell>
+                    </TableRow>
+                  ) : devis.lignes.map(ligne => (
+                    <TableRow key={ligne.id} className="bg-neutral-50">
+                      <TableCell className="text-sm">{ligne.designation}</TableCell>
+                      <TableCell className="text-sm">{ligne.unite}</TableCell>
+                      <TableCell className="text-sm text-right">{ligne.quantite}</TableCell>
+                      <TableCell className="text-sm text-right">{formatCurrency(ligne.prix_unitaire)}</TableCell>
+                      <TableCell className="text-sm text-right font-medium">{formatCurrency(ligne.montant)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <div className="mt-6 flex justify-end">
+                <div className="w-64 space-y-2 text-sm">
+                  <div className="flex justify-between py-2 border-b border-neutral-200">
+                    <span className="text-neutral-600">Total HT</span>
+                    <span className="font-bold text-neutral-900">{formatCurrency(devis.total_ht)}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-neutral-200">
+                    <span className="text-neutral-600">TVA (20%)</span>
+                    <span className="text-neutral-700">{formatCurrency(devis.tva)}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="font-bold text-neutral-900">Total TTC</span>
+                    <span className="font-bold text-lg text-neutral-900">{formatCurrency(devis.total_ttc)}</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab Contre-étude (éditable) */}
+        <TabsContent value="contre-etude">
+          <Card className="border border-neutral-200 bg-white">
+            <CardHeader>
+              <CardTitle className="text-xl font-medium flex items-center gap-2">
+                <Edit3 className="h-5 w-5 text-red-600" />
+                Contre-étude
+                <Badge className="bg-red-100 text-red-700 font-medium text-xs ml-2">Éditable</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500">Désignation</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-20">Unité</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-24 text-right">Qté</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-28 text-right">P.U.</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-28 text-right">Montant</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500">Note</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!contreEtude.lignes.length ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-neutral-500">
+                        Aucune ligne — Ajoutez ou copiez depuis le devis
+                      </TableCell>
+                    </TableRow>
+                  ) : contreEtude.lignes.map((ligne, index) => (
+                    <TableRow key={ligne.id}>
+                      <TableCell>
+                        <Input value={ligne.designation}
+                          onChange={e => handleUpdateLigne(index, 'designation', e.target.value)}
+                          className="h-8 text-sm" placeholder="Désignation..." />
+                      </TableCell>
+                      <TableCell>
+                        <Input value={ligne.unite}
+                          onChange={e => handleUpdateLigne(index, 'unite', e.target.value)}
+                          className="h-8 text-sm" placeholder="m²" />
+                      </TableCell>
+                      <TableCell>
+                        <Input type="number" step="0.01" value={ligne.quantite}
+                          onChange={e => handleUpdateLigne(index, 'quantite', e.target.value)}
+                          className="h-8 text-sm text-right" />
+                      </TableCell>
+                      <TableCell>
+                        <Input type="number" step="0.01" value={ligne.prix_unitaire}
+                          onChange={e => handleUpdateLigne(index, 'prix_unitaire', e.target.value)}
+                          className="h-8 text-sm text-right" />
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-sm">
+                        {formatCurrency(ligne.montant)}
+                      </TableCell>
+                      <TableCell>
+                        <Input value={ligne.commentaire || ''}
+                          onChange={e => handleUpdateLigne(index, 'commentaire', e.target.value)}
+                          className="h-8 text-sm" placeholder="Note..." />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteLigne(index)}
+                          className="h-8 w-8 text-neutral-400 hover:text-red-600 hover:bg-red-50">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <Button variant="outline" onClick={handleAddLigne}
+                className="mt-4 border-neutral-300 text-neutral-700 hover:bg-neutral-100">
+                <Plus className="h-4 w-4 mr-2" /> Ajouter une ligne
+              </Button>
+
+              <Separator className="my-6" />
+
+              {/* Commentaire + Totaux */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                    Commentaire global
+                  </Label>
+                  <Textarea
+                    value={contreEtude.commentaire_global || ''}
+                    onChange={e => { setContreEtude({ ...contreEtude, commentaire_global: e.target.value }); setHasChanges(true); }}
+                    placeholder="Notes sur la contre-étude..."
+                    className="mt-2" rows={3}
+                  />
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between py-2 border-b border-neutral-200">
+                    <span className="text-neutral-600">Contre-étude HT</span>
+                    <span className="font-bold text-neutral-900">{formatCurrency(contreEtude.total_ht)}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-neutral-200">
+                    <span className="text-neutral-600">Devis HT</span>
+                    <span className="text-neutral-500">{formatCurrency(devis.total_ht)}</span>
+                  </div>
+                  <div className={`flex justify-between py-3 px-3 -mx-3 ${
+                    contreEtude.ecart_devis < 0 ? 'bg-green-50' :
+                    contreEtude.ecart_devis > 0 ? 'bg-red-50' : 'bg-neutral-50'
+                  }`}>
+                    <span className="font-bold flex items-center gap-2">
+                      {contreEtude.ecart_devis < 0
+                        ? <TrendingDown className="h-4 w-4 text-green-600" />
+                        : contreEtude.ecart_devis > 0
+                        ? <TrendingUp className="h-4 w-4 text-red-600" />
+                        : null}
+                      Écart
+                    </span>
+                    <span className={`font-bold ${
+                      contreEtude.ecart_devis < 0 ? 'text-green-600' :
+                      contreEtude.ecart_devis > 0 ? 'text-red-600' : 'text-neutral-600'
+                    }`}>
+                      {contreEtude.ecart_devis >= 0 ? '+' : ''}{formatCurrency(contreEtude.ecart_devis)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Bouton enregistrer bas de page */}
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving || !hasChanges}
+          className={`transition-colors ${
+            hasChanges ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-neutral-200 text-neutral-500 cursor-not-allowed'
+          }`}
+        >
+          <Save className="h-4 w-4 mr-2" />
+          {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // VUE ÉTAPE — détail d'une étape avec fil d'Ariane
 // ---------------------------------------------------------------------------
-function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate }) {
+function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate, onRefreshFiche }) {
   const etape  = fiche.etapes?.find(e => e.numero === etapeNum);
   const meta   = ETAPES_CONFIG[etapeNum] || { label: `Étape ${etapeNum}`, description: '' };
   const config = STATUT_CONFIG[etape?.statut || 'non_commence'];
@@ -219,6 +839,9 @@ function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate }) {
 
   // Auto-set to "en_cours" on mount if "non_commence"
   const autoSetRef = useRef(false);
+  useEffect(() => {
+    autoSetRef.current = false;
+  }, [etapeNum]);
   useEffect(() => {
     if (autoSetRef.current) return;
     autoSetRef.current = true;
@@ -238,7 +861,7 @@ function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate }) {
   };
 
   const hasPrev = etapeNum > 1;
-  const hasNext = etapeNum < 13;
+  const hasNext = etapeNum < 12;
 
   return (
     <div className="space-y-5">
@@ -289,7 +912,7 @@ function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate }) {
         </CardContent>
       </Card>
 
-      {/* Actions */}
+      {/* Actions statut */}
       <Card className="border-[#e4e4e7]">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm text-[#09090b]">Avancement</CardTitle>
@@ -321,13 +944,17 @@ function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate }) {
         </CardContent>
       </Card>
 
+      {/* Contenu spécifique selon l'étape */}
+      {etapeNum === 1 && <EtapePlanification fiche={fiche} onUpdate={onRefreshFiche} />}
+      {etapeNum === 2 && <EtapeContreEtude fiche={fiche} onUpdate={onRefreshFiche} />}
+
       {/* Progress bar du chantier */}
       <Card className="border-[#e4e4e7]">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-[#71717a] font-medium">Avancement global — {fiche.nom}</span>
             <span className="text-xs font-semibold text-[#09090b]">
-              {fiche.etapes?.filter(e => e.statut === 'termine').length ?? 0} / 13
+              {fiche.etapes?.filter(e => e.statut === 'termine').length ?? 0} / 12
             </span>
           </div>
           <ProgressBar percent={progressPercent(fiche.etapes)} />
@@ -345,7 +972,7 @@ function VueEtape({ fiche, etapeNum, onBack, onUpdateEtape, onNavigate }) {
           <ChevronLeft size={16} />
           {hasPrev ? `Étape ${etapeNum - 1}` : 'Première étape'}
         </Button>
-        <span className="text-xs text-[#a1a1aa]">{etapeNum} / 13</span>
+        <span className="text-xs text-[#a1a1aa]">{etapeNum} / 12</span>
         <Button
           variant="outline"
           onClick={() => hasNext && onNavigate(etapeNum + 1)}
@@ -432,7 +1059,7 @@ function VueFiche({ fiche: initialFiche, onBack, onOpenEtape }) {
 
       {/* Main layout: personnes + infos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Personnes — Address Book style */}
+        {/* Personnes */}
         <Card className="border-[#e4e4e7]">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm text-[#09090b] flex items-center gap-2">
@@ -441,29 +1068,13 @@ function VueFiche({ fiche: initialFiche, onBack, onOpenEtape }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <PersonneCard
-              titre="Conducteur de travaux"
-              personne={fiche.conducteur}
-              editable={false}
-              icon={HardHat}
-            />
+            <PersonneCard titre="Conducteur de travaux" personne={fiche.conducteur} editable={false} icon={HardHat} />
             <Separator className="bg-[#f4f4f5]" />
-            <PersonneCard
-              titre="Chef de File (CF)"
-              personne={fiche.cf}
-              editable={true}
-              onSave={handleSaveCf}
-              icon={Briefcase}
-            />
+            <PersonneCard titre="Chef de File (CF)" personne={fiche.cf} editable={true} onSave={handleSaveCf} icon={Briefcase} />
             {fiche.ca?.nom_complet && (
               <>
                 <Separator className="bg-[#f4f4f5]" />
-                <PersonneCard
-                  titre="Chargé d'Affaire"
-                  personne={fiche.ca}
-                  editable={false}
-                  icon={Phone}
-                />
+                <PersonneCard titre="Chargé d'Affaire" personne={fiche.ca} editable={false} icon={Phone} />
               </>
             )}
           </CardContent>
@@ -493,7 +1104,6 @@ function VueFiche({ fiche: initialFiche, onBack, onOpenEtape }) {
                 </div>
               ))}
             </div>
-
             {adresseLabel && (
               <div className="mt-5 pt-4 border-t border-[#f4f4f5]">
                 <p className="text-[11px] uppercase tracking-wider text-[#a1a1aa] font-semibold mb-1 flex items-center gap-1">
@@ -502,7 +1112,6 @@ function VueFiche({ fiche: initialFiche, onBack, onOpenEtape }) {
                 <p className="text-sm text-[#09090b]">{adresseLabel}</p>
               </div>
             )}
-
             {fiche.synced_at && (
               <p className="text-[11px] text-[#a1a1aa] mt-4 flex items-center gap-1">
                 <RefreshCw size={9} />
@@ -629,7 +1238,7 @@ function VueGlobale({ fiches, onSelect, search, setSearch }) {
         </div>
       </div>
 
-      {/* Grid de cartes — Address Book 2 style */}
+      {/* Grid de cartes */}
       {filtered.length === 0 ? (
         <Card className="border-[#e4e4e7]">
           <CardContent className="py-16 text-center">
@@ -653,11 +1262,8 @@ function VueGlobale({ fiches, onSelect, search, setSearch }) {
                 className="border-[#e4e4e7] hover:border-[#D32F2F]/40 hover:shadow-md cursor-pointer group transition-all duration-200 bg-white"
               >
                 <CardContent className="p-0">
-                  {/* Top accent band */}
                   <div className="h-1 rounded-t-xl bg-gradient-to-r from-[#D32F2F] to-[#ef5350] opacity-0 group-hover:opacity-100 transition-opacity" />
-
                   <div className="p-5">
-                    {/* Client + code */}
                     <div className="flex items-start justify-between mb-2">
                       <div className="min-w-0 flex-1">
                         {clientLabel && (
@@ -675,10 +1281,7 @@ function VueGlobale({ fiches, onSelect, search, setSearch }) {
                         {pct === 100 ? 'Terminé' : pct > 0 ? `${pct}%` : '—'}
                       </Badge>
                     </div>
-
                     <Separator className="my-3 bg-[#f4f4f5]" />
-
-                    {/* Contacts */}
                     <div className="space-y-1.5 text-xs text-[#71717a]">
                       {conducteur && (
                         <div className="flex items-center gap-2">
@@ -706,13 +1309,9 @@ function VueGlobale({ fiches, onSelect, search, setSearch }) {
                         </div>
                       )}
                     </div>
-
-                    {/* Progress */}
                     <div className="mt-4">
                       <ProgressBar percent={pct} />
                     </div>
-
-                    {/* Code + arrow */}
                     <div className="flex items-center justify-between mt-3">
                       <code className="text-[10px] text-[#a1a1aa] font-mono">{f.code_marche || f.code}</code>
                       <ArrowRight size={14} className="text-[#d4d4d8] group-hover:text-[#D32F2F] transition-colors" />
@@ -737,8 +1336,8 @@ export default function FlowChantier() {
 
   const [fiches,   setFiches]   = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const [selected, setSelected] = useState(null);   // fiche sélectionnée
-  const [etapeNum, setEtapeNum] = useState(null);   // numéro d'étape ouverte
+  const [selected, setSelected] = useState(null);
+  const [etapeNum, setEtapeNum] = useState(null);
   const [search,   setSearch]   = useState('');
 
   const fetchFiches = useCallback(async () => {
@@ -755,7 +1354,6 @@ export default function FlowChantier() {
 
   useEffect(() => { fetchFiches(); }, [fetchFiches]);
 
-  // Mise à jour locale de la fiche sélectionnée après une action
   const handleUpdateEtape = useCallback(async (numero, statut) => {
     await ficheApi.updateEtape(selected.code, numero, statut);
     const updated = {
@@ -766,7 +1364,19 @@ export default function FlowChantier() {
     setFiches(prev => prev.map(f => f.code === updated.code ? updated : f));
   }, [selected]);
 
-  // Navigation fil d'Ariane depuis VueEtape
+  // Rafraîchir la fiche sélectionnée depuis l'API (après planification / contre-étude)
+  const handleRefreshFiche = useCallback(async () => {
+    if (!selected) return;
+    try {
+      const res = await ficheApi.get(selected.code);
+      const updated = res.data;
+      setSelected(updated);
+      setFiches(prev => prev.map(f => f.code === updated.code ? updated : f));
+    } catch (err) {
+      // Silently fail
+    }
+  }, [selected]);
+
   const handleEtapeBack = (dest) => {
     if (dest === 'list') { setSelected(null); setEtapeNum(null); }
     else                 { setEtapeNum(null); }
@@ -774,7 +1384,6 @@ export default function FlowChantier() {
 
   const view = etapeNum != null ? 'etape' : selected ? 'fiche' : 'list';
 
-  // Titre du header
   const headerTitle = view === 'etape'
     ? `${selected?.code} — ${ETAPES_CONFIG[etapeNum]?.label ?? `Étape ${etapeNum}`}`
     : view === 'fiche'
@@ -848,6 +1457,7 @@ export default function FlowChantier() {
             onBack={handleEtapeBack}
             onUpdateEtape={handleUpdateEtape}
             onNavigate={setEtapeNum}
+            onRefreshFiche={handleRefreshFiche}
           />
         ) : view === 'fiche' ? (
           <VueFiche

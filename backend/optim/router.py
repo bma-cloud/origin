@@ -26,7 +26,7 @@ async def _sync_task():
 optim_router = APIRouter(prefix="/api/optim", tags=["Optim BTP"])
 
 # Nombre d'étapes de suivi dans la Fiche Chef de File
-NB_ETAPES = 13
+NB_ETAPES = 12
 
 
 def _build_etapes_initiales() -> list[dict]:
@@ -132,6 +132,12 @@ async def sync_chantiers():
                     # Champs Optim — toujours mis à jour
                     "$set": {
                         "optim_id":           c["id_optim"],
+                        "code_marche":        c.get("code_marche") or "",
+                        "ref_ext_marche":     c.get("ref_ext_marche") or "",
+                        "description_marche": c.get("description_marche") or "",
+                        "etat_marche":        c.get("etat_marche"),
+                        "date_accord":        _format_date(c.get("date_accord")),
+                        "chantier_id":        c.get("chantier_id"),
                         "code":               c["code"],
                         "nom":                c["nom"],
                         "nom_complet":        c.get("nom_complet") or c["nom"],
@@ -145,7 +151,8 @@ async def sync_chantiers():
                             "initiales":   c.get("initiales_ca") or "",
                             "fonction":    c.get("fonction_ca") or "",
                         },
-                        "conducteur": {
+                        # conducteur_optim = valeur Optim en lecture seule (jamais modifiée par la plateforme)
+                        "conducteur_optim": {
                             "nom_complet": nom_cond,
                             "fonction":    c.get("fonction_conducteur") or "",
                         },
@@ -164,8 +171,13 @@ async def sync_chantiers():
                         },
                         "synced_at": now,
                     },
-                    # Champs ITS Origin — initialisés une seule fois à la création
+                    # Champs ITS Origin — initialisés une seule fois à la création, jamais écrasés par la sync
                     "$setOnInsert": {
+                        # conducteur initialisé depuis Optim mais éditable via la plateforme
+                        "conducteur": {
+                            "nom_complet": nom_cond,
+                            "fonction":    c.get("fonction_conducteur") or "",
+                        },
                         "cf": {
                             "nom_complet": "",
                             "initiales":   "",
@@ -184,13 +196,21 @@ async def sync_chantiers():
     created = result.upserted_count
     updated = result.modified_count
 
+    # 4. Supprimer les documents MongoDB dont l'optim_id n'est plus dans le périmètre Optim
+    optim_ids_actifs = [c["id_optim"] for c in chantiers_optim]
+    delete_result = await fiche_chantiers_col.delete_many(
+        {"optim_id": {"$nin": optim_ids_actifs}}
+    )
+    deleted = delete_result.deleted_count
+
     logger.info(
         f"Sync Optim terminée — créés : {created}, mis à jour : {updated}, "
-        f"total Optim : {len(chantiers_optim)}"
+        f"supprimés : {deleted}, total Optim : {len(chantiers_optim)}"
     )
 
     return {
         "created":     created,
         "updated":     updated,
+        "deleted":     deleted,
         "total_optim": len(chantiers_optim),
     }

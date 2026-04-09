@@ -75,13 +75,12 @@ export default function OutilPage() {
 
   const handleUseOutil = () => {
     if (!hasAccess) return;
-    
-    // Si c'est l'outil "Fiche de File", ouvrir FlowChantier dans un nouvel onglet
-    if (outil?.nom === 'Fiche de File') {
+
+    if (outil?.type === 'flowchantier') {
       window.open(`/outils/${outilId}/flowchantier`, '_blank');
       return;
     }
-    
+
     setIsUsing(true);
   };
 

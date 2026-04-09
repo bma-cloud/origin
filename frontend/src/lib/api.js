@@ -95,6 +95,11 @@ export const ficheApi = {
   get: (code) => api.get(`/fiches/${code}`),
   updateCf: (code, data) => api.patch(`/fiches/${code}/cf`, data),
   updateEtape: (code, numero, statut) => api.patch(`/fiches/${code}/etapes/${numero}`, { statut }),
+  updatePlanification: (code, data) => api.put(`/fiches/${code}/planification`, data),
+  updateContreEtude: (code, data) => api.put(`/fiches/${code}/contre-etude`, data),
+  getConducteurs: () => api.get('/fiches/referentiels/conducteurs'),
+  getChefsDeFile: () => api.get('/fiches/referentiels/chefs-de-file'),
+  getDevis: (code) => api.get(`/fiches/${code}/devis`),
 };
 
 export default api;

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 import pymysql
 
 from database import fiche_chantiers_col
-from optim.queries import get_chantier_by_code
+from optim.queries import get_chantier_by_code, get_devis_by_vde_id
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ fiche_router = APIRouter(prefix="/api/fiches", tags=["Fiche Chef de File"])
 STATUTS_VALIDES = {"non_commence", "en_cours", "termine"}
 
 # Nombre d'étapes de suivi de la Fiche Chef de File
-NB_ETAPES = 13
+NB_ETAPES = 12
 
 
 def _build_etapes_initiales() -> list[dict]:
@@ -49,11 +49,17 @@ def _doc_depuis_optim(chantier: dict, now: str) -> dict:
         nom_cond = ""
 
     return {
-        "optim_id":          chantier["id_optim"],
-        "code":              chantier["code"],
-        "nom":               chantier["nom"],
-        "nom_complet":       chantier.get("nom_complet") or chantier["nom"],
-        "etat":              chantier.get("etat"),
+        "optim_id":           chantier["id_optim"],
+        "code_marche":        chantier.get("code_marche") or "",
+        "ref_ext_marche":     chantier.get("ref_ext_marche") or "",
+        "description_marche": chantier.get("description_marche") or "",
+        "etat_marche":        chantier.get("etat_marche"),
+        "date_accord":        _format_date(chantier.get("date_accord")),
+        "chantier_id":        chantier.get("chantier_id"),
+        "code":               chantier["code"],
+        "nom":                chantier["nom"],
+        "nom_complet":        chantier.get("nom_complet") or chantier["nom"],
+        "etat":               chantier.get("etat"),
         "date_debut_prevue": _format_date(chantier.get("date_debut_prevue")),
         "date_fin_prevue":   _format_date(chantier.get("date_fin_prevue")),
         "date_debut_reelle": _format_date(chantier.get("date_debut_reelle")),
@@ -207,3 +213,126 @@ async def update_etape(code_chantier: str, numero_etape: int, body: dict):
         )
 
     return {"ok": True, "etape": numero_etape, "statut": statut}
+
+
+# ---------------------------------------------------------------------------
+# Référentiels (conducteurs / chefs de file)
+# ---------------------------------------------------------------------------
+
+@fiche_router.get("/referentiels/conducteurs")
+async def get_conducteurs():
+    """Retourne la liste des conducteurs de travaux depuis les fiches chantier."""
+    pipeline = [
+        {"$match": {"conducteur.nom_complet": {"$ne": "", "$exists": True}}},
+        {"$group": {"_id": "$conducteur.nom_complet"}},
+        {"$sort": {"_id": 1}},
+    ]
+    results = await fiche_chantiers_col.aggregate(pipeline).to_list(None)
+    conducteurs = [{"id": r["_id"], "nom": r["_id"]} for r in results if r["_id"]]
+    return conducteurs
+
+
+@fiche_router.get("/referentiels/chefs-de-file")
+async def get_chefs_de_file():
+    """Retourne la liste des chefs de file depuis les fiches chantier."""
+    pipeline = [
+        {"$match": {"cf.nom_complet": {"$ne": "", "$exists": True}}},
+        {"$group": {"_id": "$cf.nom_complet"}},
+        {"$sort": {"_id": 1}},
+    ]
+    results = await fiche_chantiers_col.aggregate(pipeline).to_list(None)
+    chefs = [{"id": r["_id"], "nom": r["_id"]} for r in results if r["_id"]]
+    return chefs
+
+
+# ---------------------------------------------------------------------------
+# Devis Optim (lecture seule — étape 2)
+# ---------------------------------------------------------------------------
+
+@fiche_router.get("/{code_chantier}/devis")
+async def get_devis(code_chantier: str):
+    """
+    Retourne les lignes du devis Optim pour un marché (lecture seule).
+    Requête directe sur vte_doc_ligne via l'optim_id stocké en MongoDB.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"optim_id": 1})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    optim_id = fiche.get("optim_id")
+    if not optim_id:
+        return {"lignes": [], "total_ht": 0, "tva": 0, "total_ttc": 0}
+
+    try:
+        devis = await asyncio.to_thread(get_devis_by_vde_id, optim_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
+
+    return devis
+
+
+# ---------------------------------------------------------------------------
+# Planification (étape 1)
+# ---------------------------------------------------------------------------
+
+@fiche_router.put("/{code_chantier}/planification")
+async def update_planification(code_chantier: str, body: dict):
+    """
+    Enregistre la planification initiale : équipe, dossier admin, statut planifié.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    conducteur_nom   = body.get("conducteur") or ""
+    chef_de_file_nom = body.get("chef_de_file") or ""
+
+    planification = {
+        "planifie":     bool(body.get("planifie", False)),
+        "conducteur":   conducteur_nom,
+        "chef_de_file": chef_de_file_nom,
+        "dossier": {
+            "acompte": bool(body.get("dossier", {}).get("acompte", False)),
+            "os":      bool(body.get("dossier", {}).get("os", False)),
+            "contrat": bool(body.get("dossier", {}).get("contrat", False)),
+        },
+    }
+
+    # Met à jour la planification ET les champs conducteur/cf affichés sur la fiche
+    # Ces champs sont dans $setOnInsert (jamais écrasés par la sync Optim)
+    await fiche_chantiers_col.update_one(
+        {"code": code_chantier},
+        {"$set": {
+            "planification": planification,
+            "conducteur.nom_complet": conducteur_nom,
+            "cf.nom_complet":         chef_de_file_nom,
+        }}
+    )
+    return {"ok": True, "planification": planification}
+
+
+# ---------------------------------------------------------------------------
+# Contre-étude (étape 2)
+# ---------------------------------------------------------------------------
+
+@fiche_router.put("/{code_chantier}/contre-etude")
+async def update_contre_etude(code_chantier: str, body: dict):
+    """
+    Enregistre la contre-étude technique : lignes, totaux, commentaire global.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    contre_etude = {
+        "lignes":            body.get("lignes", []),
+        "total_ht":          float(body.get("total_ht", 0)),
+        "ecart_devis":       float(body.get("ecart_devis", 0)),
+        "commentaire_global": body.get("commentaire_global") or "",
+    }
+
+    await fiche_chantiers_col.update_one(
+        {"code": code_chantier},
+        {"$set": {"contre_etude": contre_etude}}
+    )
+    return {"ok": True, "contre_etude": contre_etude}

@@ -113,6 +113,7 @@ class OutilSimpleResponse(BaseModel):
     domaine_id: UUID
     roles_disponibles: list
     created_at: datetime
+    type: Optional[str] = None
 
 class OutilResponse(OutilSimpleResponse):
     domaine_nom: Optional[str] = None

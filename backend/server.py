@@ -353,7 +353,8 @@ async def get_outils(current_user: dict = Depends(get_current_user)):
             "id": o["id"], "nom": o["nom"], "domaine_id": o["domaine_id"],
             "domaine_nom": d["nom"] if d else None,
             "roles_disponibles": o.get("roles_disponibles", []),
-            "created_at": o["created_at"]
+            "created_at": o["created_at"],
+            "type": o.get("type"),
         })
     return result
 
