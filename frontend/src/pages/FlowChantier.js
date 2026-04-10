@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ficheApi, formatApiError } from '../lib/api';
@@ -506,82 +506,228 @@ function EtapePlanification({ fiche, onUpdate }) {
 // ---------------------------------------------------------------------------
 // ÉTAPE 2 — Contre-étude technique
 // ---------------------------------------------------------------------------
-function EtapeContreEtude({ fiche, onUpdate }) {
+
+// Ordre d'affichage et labels des catégories déboursé
+const CATEGORIE_ORDER = ['MO', 'MAT', 'ST', 'LOC', 'VTE', 'FR', ''];
+const CATEGORIE_LABELS = {
+  MO:  "Main d'Œuvre",
+  MAT: 'Matériaux',
+  ST:  'Sous-Traitance',
+  LOC: 'Location',
+  VTE: 'Vente',
+  FR:  'Frais',
+  '':  'Autres',
+};
+
+function DevisGroupedView({ lignes, total_ht, tva, total_ttc, TH }) {
+  if (!lignes?.length) {
+    return <p className="text-center py-8 text-neutral-500 text-sm">Aucune ligne de déboursé</p>;
+  }
+
+  // Grouper les lignes : niveau 1 = catégorie, niveau 2 = sous_famille
+  // On groupe tous les types de lignes (TL=1 et TL=2) ensemble
+  const groupes = {};
+  for (const l of lignes) {
+    const cat = l.categorie || '';
+    const fam = l.sous_famille || l.famille || '—';
+    if (!groupes[cat]) groupes[cat] = {};
+    if (!groupes[cat][fam]) groupes[cat][fam] = [];
+    groupes[cat][fam].push(l);
+  }
+
+  const categoriesPresentes = CATEGORIE_ORDER.filter(c => groupes[c]);
+
+  // Totaux par catégorie : sommer uniquement les TL=1 (ressources) pour éviter le double-comptage
+  const catTotals = {};
+  for (const l of lignes) {
+    if (l.type_ligne === 1 && l.categorie) {
+      catTotals[l.categorie] = (catTotals[l.categorie] || 0) + (parseFloat(l.montant) || 0);
+    }
+    // Lignes sans type_ligne (ancien format) : compter normalement
+    if (!l.type_ligne && l.categorie) {
+      catTotals[l.categorie] = (catTotals[l.categorie] || 0) + (parseFloat(l.montant) || 0);
+    }
+  }
+
+  return (
+    <>
+      {/* Pastilles résumé par catégorie */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {categoriesPresentes.map(cat => (
+          <div key={cat} className="px-3 py-1.5 rounded text-xs font-semibold bg-neutral-200 text-neutral-700">
+            {CATEGORIE_LABELS[cat]} — {formatCurrency(catTotals[cat] || 0)}
+          </div>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-neutral-100">
+              <TH>N°</TH>
+              <TH>Désignation</TH>
+              <TH>Unité</TH>
+              <TH right>Qté</TH>
+              <TH right>P.U. Déboursé</TH>
+              <TH right>Montant</TH>
+              <TH>Fournisseur</TH>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {categoriesPresentes.map(cat => {
+              const fams = groupes[cat];
+              const cat_total = catTotals[cat] || 0;
+              return (
+                <React.Fragment key={cat}>
+                  {/* Niveau 1 : en-tête catégorie */}
+                  <TableRow className="bg-neutral-700 text-white">
+                    <TableCell colSpan={5} className="py-2 font-bold text-xs uppercase tracking-wider text-white">
+                      {CATEGORIE_LABELS[cat]}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-sm whitespace-nowrap py-2 text-white">
+                      {formatCurrency(cat_total)}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                  {/* Niveau 2 : sous-familles */}
+                  {Object.entries(fams).map(([fam, fam_lignes]) => {
+                    const fam_total = fam_lignes
+                      .filter(l => l.type_ligne === 1 || !l.type_ligne)
+                      .reduce((s, l) => s + (parseFloat(l.montant) || 0), 0);
+                    return (
+                      <React.Fragment key={`${cat}-${fam}`}>
+                        {/* En-tête sous-famille */}
+                        <TableRow className="bg-neutral-100">
+                          <TableCell colSpan={5} className="py-1.5 pl-6 font-semibold text-xs text-neutral-600 italic">
+                            {fam}
+                          </TableCell>
+                          <TableCell className="text-right text-xs font-semibold text-neutral-600 whitespace-nowrap py-1.5">
+                            {formatCurrency(fam_total)}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                        {/* Lignes individuelles */}
+                        {fam_lignes.map(l => {
+                          const isOuvrage = l.type_ligne === 2;
+                          return (
+                            <TableRow key={l.id} className={isOuvrage ? 'bg-neutral-50' : 'hover:bg-neutral-50/80'}>
+                              <TableCell className="text-xs text-neutral-400 font-mono pl-8">
+                                {!isOuvrage && l.numero_ligne}
+                              </TableCell>
+                              <TableCell className={`text-sm max-w-xs ${isOuvrage ? 'font-semibold pl-8' : 'pl-12'}`}>
+                                <div className="whitespace-pre-wrap break-words">{l.designation}</div>
+                              </TableCell>
+                              <TableCell className="text-sm">{!isOuvrage && l.unite}</TableCell>
+                              <TableCell className="text-sm text-right">{!isOuvrage && l.quantite}</TableCell>
+                              <TableCell className="text-sm text-right">{!isOuvrage && formatCurrency(l.prix_unitaire)}</TableCell>
+                              <TableCell className={`text-sm text-right ${isOuvrage ? 'font-bold' : 'font-medium'}`}>
+                                {formatCurrency(l.montant)}
+                              </TableCell>
+                              <TableCell className="text-sm text-neutral-500">{!isOuvrage && l.fournisseur}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="mt-6 flex justify-end">
+        <div className="w-64 space-y-2 text-sm">
+          <div className="flex justify-between py-2 border-b border-neutral-200">
+            <span className="text-neutral-600">Total déboursé HT</span>
+            <span className="font-bold">{formatCurrency(total_ht)}</span>
+          </div>
+          <div className="flex justify-between py-2 border-b border-neutral-200">
+            <span className="text-neutral-600">TVA</span>
+            <span>{formatCurrency(tva)}</span>
+          </div>
+          <div className="flex justify-between py-2">
+            <span className="font-bold">Total TTC</span>
+            <span className="font-bold text-lg">{formatCurrency(total_ttc)}</span>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Sous-composant : tableau devis (lecture seule) + contre-étude (éditable) pour 1 devis
+function DevisDetail({ fiche, devisInfo, onClose }) {
   const [activeTab, setActiveTab] = useState('devis');
-  const [contreEtude, setContreEtude] = useState({
-    lignes: [], total_ht: 0, ecart_devis: 0, commentaire_global: '',
-  });
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [devis, setDevis] = useState({ lignes: [], total_ht: 0, tva: 0, total_ttc: 0 });
   const [loadingDevis, setLoadingDevis] = useState(true);
+  const [contreEtude, setContreEtude] = useState({ lignes: [], total_ht: 0, ecart_devis: 0, commentaire_global: '' });
+  const [hasChanges, setHasChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Charger le devis depuis Optim
   useEffect(() => {
     setLoadingDevis(true);
-    ficheApi.getDevis(fiche.code)
+    ficheApi.getDevisById(fiche.code, devisInfo.vde_id)
       .then(r => setDevis(r.data))
       .catch(() => {})
       .finally(() => setLoadingDevis(false));
-  }, [fiche.code]);
 
-  useEffect(() => {
-    if (fiche?.contre_etude) {
+    // Charger la contre-étude persistée pour ce devis spécifique
+    const ce = fiche?.contre_etudes?.[devisInfo.vde_id];
+    if (ce) {
       setContreEtude({
-        lignes:            fiche.contre_etude.lignes || [],
-        total_ht:          fiche.contre_etude.total_ht || 0,
-        ecart_devis:       fiche.contre_etude.ecart_devis || 0,
-        commentaire_global: fiche.contre_etude.commentaire_global || '',
+        lignes: ce.lignes || [],
+        total_ht: ce.total_ht || 0,
+        ecart_devis: ce.ecart_devis || 0,
+        commentaire_global: ce.commentaire_global || '',
       });
     }
-  }, [fiche]);
+  }, [fiche, devisInfo.vde_id]);
 
   const calculateTotals = (lignes) => {
-    const total_ht = lignes.reduce((sum, l) => sum + (l.montant || 0), 0);
-    const ecart_devis = total_ht - (devis.total_ht || 0);
-    return { total_ht, ecart_devis };
+    const total_ht = lignes.reduce((sum, l) => sum + (parseFloat(l.montant) || 0), 0);
+    return { total_ht, ecart_devis: total_ht - (devis.total_ht || 0) };
   };
 
   const handleUpdateLigne = (index, field, value) => {
-    const newLignes = [...contreEtude.lignes];
-    newLignes[index] = { ...newLignes[index], [field]: value };
+    const nl = [...contreEtude.lignes];
+    nl[index] = { ...nl[index], [field]: value };
     if (field === 'quantite' || field === 'prix_unitaire') {
-      const q  = field === 'quantite'     ? parseFloat(value) || 0 : parseFloat(newLignes[index].quantite) || 0;
-      const pu = field === 'prix_unitaire' ? parseFloat(value) || 0 : parseFloat(newLignes[index].prix_unitaire) || 0;
-      newLignes[index].montant = q * pu;
+      const q  = field === 'quantite'      ? parseFloat(value) || 0 : parseFloat(nl[index].quantite) || 0;
+      const pu = field === 'prix_unitaire' ? parseFloat(value) || 0 : parseFloat(nl[index].prix_unitaire) || 0;
+      nl[index].montant = q * pu;
     }
-    setContreEtude({ ...contreEtude, lignes: newLignes, ...calculateTotals(newLignes) });
+    setContreEtude({ ...contreEtude, lignes: nl, ...calculateTotals(nl) });
     setHasChanges(true);
   };
 
   const handleDeleteLigne = (index) => {
-    const newLignes = contreEtude.lignes.filter((_, i) => i !== index);
-    setContreEtude({ ...contreEtude, lignes: newLignes, ...calculateTotals(newLignes) });
+    const nl = contreEtude.lignes.filter((_, i) => i !== index);
+    setContreEtude({ ...contreEtude, lignes: nl, ...calculateTotals(nl) });
     setHasChanges(true);
   };
 
   const handleAddLigne = () => {
-    const newLigne = { id: `ce-${Date.now()}`, designation: '', unite: '', quantite: 0, prix_unitaire: 0, montant: 0, commentaire: '' };
-    const newLignes = [...contreEtude.lignes, newLigne];
-    setContreEtude({ ...contreEtude, lignes: newLignes, ...calculateTotals(newLignes) });
+    const nl = [...contreEtude.lignes, { id: `ce-${Date.now()}`, designation: '', unite: '', quantite: 0, prix_unitaire: 0, montant: 0, fournisseur: '', commentaire: '' }];
+    setContreEtude({ ...contreEtude, lignes: nl, ...calculateTotals(nl) });
     setHasChanges(true);
   };
 
   const handleCopyFromDevis = () => {
-    if (!devis.lignes?.length) { toast.error('Aucune ligne de devis à copier'); return; }
-    const copied = devis.lignes.map(l => ({
-      ...l, id: `ce-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`, commentaire: '',
-    }));
-    setContreEtude({ ...contreEtude, lignes: copied, ...calculateTotals(copied) });
+    if (!devis.lignes?.length) { toast.error('Aucune ligne à copier'); return; }
+    // Ne copier que les ressources (TL=1), pas les ouvrages containers (TL=2)
+    const nl = devis.lignes
+      .filter(l => l.type_ligne !== 2)
+      .map(l => ({ ...l, id: `ce-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, commentaire: '' }));
+    setContreEtude({ ...contreEtude, lignes: nl, ...calculateTotals(nl) });
     setHasChanges(true);
-    toast.success('Lignes copiées depuis le devis');
+    toast.success('Lignes copiées');
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await ficheApi.updateContreEtude(fiche.code, contreEtude);
-      if (onUpdate) await onUpdate();
+      await ficheApi.updateContreEtude(fiche.code, { vde_id: devisInfo.vde_id, ...contreEtude });
       toast.success('Contre-étude enregistrée');
       setHasChanges(false);
     } catch (err) {
@@ -591,217 +737,254 @@ function EtapeContreEtude({ fiche, onUpdate }) {
     }
   };
 
+  const handleExportPDF = () => {
+    import('jspdf').then(({ jsPDF }) => {
+      import('jspdf-autotable').then(() => {
+        const doc = new jsPDF({ orientation: 'landscape' });
+        const source = activeTab === 'devis' ? devis : contreEtude;
+        const title = activeTab === 'devis'
+          ? `Détail déboursé — ${devisInfo.reference}`
+          : `Contre-étude — ${devisInfo.reference}`;
+
+        doc.setFontSize(14);
+        doc.text(title, 14, 15);
+        doc.setFontSize(9);
+        doc.text(`${fiche.nom_complet || fiche.nom} · ${fiche.code_marche || fiche.code}`, 14, 22);
+        doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 14, 27);
+
+        if (activeTab === 'devis') {
+          // Export groupé 2 niveaux : catégorie → sous-famille → lignes
+          const cols = ['N°', 'Désignation', 'Unité', 'Qté', 'P.U. Déboursé', 'Montant', 'Fournisseur'];
+          const categoriesPresentes = CATEGORIE_ORDER.filter(c =>
+            source.lignes.some(l => (l.categorie || '') === c)
+          );
+          // Totaux par catégorie (TL=1 uniquement)
+          const catTotPdf = {};
+          source.lignes.forEach(l => {
+            if ((l.type_ligne === 1 || !l.type_ligne) && l.categorie)
+              catTotPdf[l.categorie] = (catTotPdf[l.categorie] || 0) + (parseFloat(l.montant) || 0);
+          });
+          const rows = [];
+          for (const cat of categoriesPresentes) {
+            const cat_lignes = source.lignes.filter(l => (l.categorie || '') === cat);
+            const cat_total = catTotPdf[cat] || 0;
+            // Niveau 1 : catégorie
+            rows.push([{ content: `${CATEGORIE_LABELS[cat]} — ${formatCurrency(cat_total)}`, colSpan: 7, styles: { fontStyle: 'bold', fillColor: [55, 65, 81], textColor: [255, 255, 255] } }]);
+            // Niveau 2 : sous-familles
+            const fams = {};
+            cat_lignes.forEach(l => { const f = l.sous_famille || l.famille || '—'; if (!fams[f]) fams[f] = []; fams[f].push(l); });
+            for (const [fam, fam_lignes] of Object.entries(fams)) {
+              const fam_total = fam_lignes.filter(l => l.type_ligne === 1 || !l.type_ligne).reduce((s, l) => s + (parseFloat(l.montant) || 0), 0);
+              rows.push([{ content: `  ${fam} — ${formatCurrency(fam_total)}`, colSpan: 7, styles: { fontStyle: 'italic', fillColor: [229, 231, 235], textColor: [55, 65, 81] } }]);
+              fam_lignes.forEach(l => {
+                const isOuvrage = l.type_ligne === 2;
+                rows.push([
+                  isOuvrage ? '' : (l.numero_ligne || ''),
+                  (isOuvrage ? '  ► ' : '    ') + (l.designation || ''),
+                  isOuvrage ? '' : (l.unite || ''),
+                  isOuvrage ? '' : (l.quantite || ''),
+                  isOuvrage ? '' : formatCurrency(l.prix_unitaire),
+                  formatCurrency(l.montant),
+                  isOuvrage ? '' : (l.fournisseur || ''),
+                ]);
+              });
+            }
+          }
+          doc.autoTable({
+            startY: 32,
+            head: [cols],
+            body: rows,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [211, 47, 47] },
+          });
+        } else {
+          const cols = ['Désignation', 'Unité', 'Qté', 'P.U.', 'Montant', 'Fournisseur', 'Note'];
+          const rows = source.lignes.map(l => [
+            l.designation, l.unite, l.quantite,
+            formatCurrency(l.prix_unitaire), formatCurrency(l.montant),
+            l.fournisseur || '', l.commentaire || '',
+          ]);
+          doc.autoTable({
+            startY: 32,
+            head: [cols],
+            body: rows,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [211, 47, 47] },
+          });
+        }
+
+        const finalY = doc.lastAutoTable.finalY + 8;
+        doc.setFontSize(9);
+        doc.text(`Total HT : ${formatCurrency(source.total_ht)}`, 14, finalY);
+        if (activeTab === 'devis') {
+          doc.text(`TVA : ${formatCurrency(source.tva)}`, 14, finalY + 5);
+          doc.text(`Total TTC : ${formatCurrency(source.total_ttc)}`, 14, finalY + 10);
+        }
+
+        doc.save(`${activeTab === 'devis' ? 'debourse' : 'contre-etude'}_${devisInfo.reference}.pdf`);
+        toast.success('PDF téléchargé');
+      });
+    });
+  };
+
+  const TH = ({ children, right }) => (
+    <TableHead className={`text-xs font-semibold uppercase tracking-widest text-neutral-500 ${right ? 'text-right' : ''}`}>
+      {children}
+    </TableHead>
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {/* Header avec retour */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onClose} className="text-neutral-500 hover:text-neutral-900 p-1">
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div>
+          <p className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">{devisInfo.etat}</p>
+          <h3 className="font-semibold text-neutral-900">{devisInfo.reference}</h3>
+          {devisInfo.libelle && <p className="text-xs text-neutral-500 truncate max-w-md">{devisInfo.libelle}</p>}
+        </div>
+      </div>
+
       {/* Bandeau modifications */}
       {hasChanges && (
         <div className="bg-red-50 border border-red-200 p-3 flex items-center justify-between">
           <p className="text-sm text-red-700">Modifications non enregistrées</p>
-          <Button size="sm" onClick={handleSave} disabled={saving}
-            className="bg-red-600 hover:bg-red-700 text-white">
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? '...' : 'Enregistrer'}
+          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-red-600 hover:bg-red-700 text-white">
+            <Save className="h-4 w-4 mr-2" />{saving ? '...' : 'Enregistrer'}
           </Button>
         </div>
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        {/* Header tabs */}
         <div className="flex items-center justify-between mb-4">
           <TabsList className="bg-neutral-100 border border-neutral-200 p-1">
-            <TabsTrigger value="devis" className="px-6 py-2 flex items-center gap-2">
-              <Lock className="h-4 w-4" /> Devis
+            <TabsTrigger value="devis" className="px-5 py-2 flex items-center gap-2">
+              <Lock className="h-4 w-4" /> Détail déboursé
             </TabsTrigger>
-            <TabsTrigger value="contre-etude" className="px-6 py-2 flex items-center gap-2">
+            <TabsTrigger value="contre-etude" className="px-5 py-2 flex items-center gap-2">
               <Edit3 className="h-4 w-4" /> Contre-étude
             </TabsTrigger>
           </TabsList>
-          {activeTab === 'contre-etude' && (
-            <Button variant="outline" onClick={handleCopyFromDevis}
+          <div className="flex gap-2">
+            {activeTab === 'contre-etude' && (
+              <Button variant="outline" size="sm" onClick={handleCopyFromDevis}
+                className="border-neutral-300 text-neutral-700 hover:bg-neutral-100">
+                Copier depuis déboursé
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleExportPDF}
               className="border-neutral-300 text-neutral-700 hover:bg-neutral-100">
-              Copier depuis devis
+              <FileText className="h-4 w-4 mr-1.5" /> Export PDF
             </Button>
-          )}
+          </div>
         </div>
 
-        {/* Tab Devis (lecture seule) */}
+        {/* Tab Détail déboursé */}
         <TabsContent value="devis">
           <Card className="border border-neutral-200 bg-neutral-50">
-            {loadingDevis && (
-              <div className="flex items-center justify-center py-10 gap-2 text-neutral-400 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" /> Chargement du devis Optim…
-              </div>
-            )}
-            <CardHeader>
-              <CardTitle className="text-xl font-medium flex items-center gap-2">
-                <FileText className="h-5 w-5 text-neutral-400" />
-                Devis initial
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-medium flex items-center gap-2">
+                <Lock className="h-4 w-4 text-neutral-400" />
+                Détail déboursé Optim
                 <Badge className="bg-neutral-200 text-neutral-600 font-medium text-xs ml-2">Lecture seule</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-neutral-100">
-                    {['Désignation', 'Unité', 'Qté', 'P.U.', 'Montant'].map(h => (
-                      <TableHead key={h} className="text-xs font-semibold uppercase tracking-widest text-neutral-500">{h}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {!devis.lignes?.length ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-neutral-500">Aucune ligne de devis</TableCell>
-                    </TableRow>
-                  ) : devis.lignes.map(ligne => (
-                    <TableRow key={ligne.id} className="bg-neutral-50">
-                      <TableCell className="text-sm">{ligne.designation}</TableCell>
-                      <TableCell className="text-sm">{ligne.unite}</TableCell>
-                      <TableCell className="text-sm text-right">{ligne.quantite}</TableCell>
-                      <TableCell className="text-sm text-right">{formatCurrency(ligne.prix_unitaire)}</TableCell>
-                      <TableCell className="text-sm text-right font-medium">{formatCurrency(ligne.montant)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              <div className="mt-6 flex justify-end">
-                <div className="w-64 space-y-2 text-sm">
-                  <div className="flex justify-between py-2 border-b border-neutral-200">
-                    <span className="text-neutral-600">Total HT</span>
-                    <span className="font-bold text-neutral-900">{formatCurrency(devis.total_ht)}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-neutral-200">
-                    <span className="text-neutral-600">TVA (20%)</span>
-                    <span className="text-neutral-700">{formatCurrency(devis.tva)}</span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="font-bold text-neutral-900">Total TTC</span>
-                    <span className="font-bold text-lg text-neutral-900">{formatCurrency(devis.total_ttc)}</span>
-                  </div>
+              {loadingDevis ? (
+                <div className="flex items-center justify-center py-10 gap-2 text-neutral-400 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
                 </div>
-              </div>
+              ) : (
+                <DevisGroupedView lignes={devis.lignes} total_ht={devis.total_ht} tva={devis.tva} total_ttc={devis.total_ttc} TH={TH} />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Tab Contre-étude (éditable) */}
+        {/* Tab Contre-étude */}
         <TabsContent value="contre-etude">
           <Card className="border border-neutral-200 bg-white">
-            <CardHeader>
-              <CardTitle className="text-xl font-medium flex items-center gap-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-medium flex items-center gap-2">
                 <Edit3 className="h-5 w-5 text-red-600" />
                 Contre-étude
                 <Badge className="bg-red-100 text-red-700 font-medium text-xs ml-2">Éditable</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500">Désignation</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-20">Unité</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-24 text-right">Qté</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-28 text-right">P.U.</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500 w-28 text-right">Montant</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-widest text-neutral-500">Note</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {!contreEtude.lignes.length ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-neutral-500">
-                        Aucune ligne — Ajoutez ou copiez depuis le devis
-                      </TableCell>
+                      <TH>Désignation</TH>
+                      <TH>Unité</TH>
+                      <TH right>Qté</TH>
+                      <TH right>P.U.</TH>
+                      <TH right>Montant</TH>
+                      <TH>Fournisseur</TH>
+                      <TH>Note</TH>
+                      <TableHead className="w-10" />
                     </TableRow>
-                  ) : contreEtude.lignes.map((ligne, index) => (
-                    <TableRow key={ligne.id}>
-                      <TableCell>
-                        <Input value={ligne.designation}
-                          onChange={e => handleUpdateLigne(index, 'designation', e.target.value)}
-                          className="h-8 text-sm" placeholder="Désignation..." />
-                      </TableCell>
-                      <TableCell>
-                        <Input value={ligne.unite}
-                          onChange={e => handleUpdateLigne(index, 'unite', e.target.value)}
-                          className="h-8 text-sm" placeholder="m²" />
-                      </TableCell>
-                      <TableCell>
-                        <Input type="number" step="0.01" value={ligne.quantite}
-                          onChange={e => handleUpdateLigne(index, 'quantite', e.target.value)}
-                          className="h-8 text-sm text-right" />
-                      </TableCell>
-                      <TableCell>
-                        <Input type="number" step="0.01" value={ligne.prix_unitaire}
-                          onChange={e => handleUpdateLigne(index, 'prix_unitaire', e.target.value)}
-                          className="h-8 text-sm text-right" />
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-sm">
-                        {formatCurrency(ligne.montant)}
-                      </TableCell>
-                      <TableCell>
-                        <Input value={ligne.commentaire || ''}
-                          onChange={e => handleUpdateLigne(index, 'commentaire', e.target.value)}
-                          className="h-8 text-sm" placeholder="Note..." />
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteLigne(index)}
-                          className="h-8 w-8 text-neutral-400 hover:text-red-600 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {!contreEtude.lignes.length ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8 text-neutral-500">
+                          Aucune ligne — Ajoutez ou copiez depuis le déboursé
+                        </TableCell>
+                      </TableRow>
+                    ) : contreEtude.lignes.map((l, i) => (
+                      <TableRow key={l.id}>
+                        <TableCell><Input value={l.designation} onChange={e => handleUpdateLigne(i, 'designation', e.target.value)} className="h-8 text-sm" placeholder="Désignation..." /></TableCell>
+                        <TableCell><Input value={l.unite} onChange={e => handleUpdateLigne(i, 'unite', e.target.value)} className="h-8 text-sm w-16" placeholder="m²" /></TableCell>
+                        <TableCell><Input type="number" step="0.01" value={l.quantite} onChange={e => handleUpdateLigne(i, 'quantite', e.target.value)} className="h-8 text-sm text-right w-20" /></TableCell>
+                        <TableCell><Input type="number" step="0.01" value={l.prix_unitaire} onChange={e => handleUpdateLigne(i, 'prix_unitaire', e.target.value)} className="h-8 text-sm text-right w-24" /></TableCell>
+                        <TableCell className="text-right font-medium text-sm whitespace-nowrap">{formatCurrency(l.montant)}</TableCell>
+                        <TableCell><Input value={l.fournisseur || ''} onChange={e => handleUpdateLigne(i, 'fournisseur', e.target.value)} className="h-8 text-sm" placeholder="Fournisseur..." /></TableCell>
+                        <TableCell><Input value={l.commentaire || ''} onChange={e => handleUpdateLigne(i, 'commentaire', e.target.value)} className="h-8 text-sm" placeholder="Note..." /></TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteLigne(i)} className="h-8 w-8 text-neutral-400 hover:text-red-600 hover:bg-red-50">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-              <Button variant="outline" onClick={handleAddLigne}
-                className="mt-4 border-neutral-300 text-neutral-700 hover:bg-neutral-100">
+              <Button variant="outline" size="sm" onClick={handleAddLigne} className="mt-4 border-neutral-300 text-neutral-700 hover:bg-neutral-100">
                 <Plus className="h-4 w-4 mr-2" /> Ajouter une ligne
               </Button>
 
               <Separator className="my-6" />
 
-              {/* Commentaire + Totaux */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <Label className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
-                    Commentaire global
-                  </Label>
-                  <Textarea
-                    value={contreEtude.commentaire_global || ''}
+                  <Label className="text-xs font-semibold uppercase tracking-widest text-neutral-500">Commentaire global</Label>
+                  <Textarea value={contreEtude.commentaire_global || ''}
                     onChange={e => { setContreEtude({ ...contreEtude, commentaire_global: e.target.value }); setHasChanges(true); }}
-                    placeholder="Notes sur la contre-étude..."
-                    className="mt-2" rows={3}
-                  />
+                    placeholder="Notes sur la contre-étude..." className="mt-2" rows={3} />
                 </div>
-
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between py-2 border-b border-neutral-200">
                     <span className="text-neutral-600">Contre-étude HT</span>
-                    <span className="font-bold text-neutral-900">{formatCurrency(contreEtude.total_ht)}</span>
+                    <span className="font-bold">{formatCurrency(contreEtude.total_ht)}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-neutral-200">
-                    <span className="text-neutral-600">Devis HT</span>
+                    <span className="text-neutral-600">Déboursé HT</span>
                     <span className="text-neutral-500">{formatCurrency(devis.total_ht)}</span>
                   </div>
                   <div className={`flex justify-between py-3 px-3 -mx-3 ${
-                    contreEtude.ecart_devis < 0 ? 'bg-green-50' :
-                    contreEtude.ecart_devis > 0 ? 'bg-red-50' : 'bg-neutral-50'
+                    contreEtude.ecart_devis < 0 ? 'bg-green-50' : contreEtude.ecart_devis > 0 ? 'bg-red-50' : 'bg-neutral-50'
                   }`}>
                     <span className="font-bold flex items-center gap-2">
-                      {contreEtude.ecart_devis < 0
-                        ? <TrendingDown className="h-4 w-4 text-green-600" />
-                        : contreEtude.ecart_devis > 0
-                        ? <TrendingUp className="h-4 w-4 text-red-600" />
-                        : null}
+                      {contreEtude.ecart_devis < 0 ? <TrendingDown className="h-4 w-4 text-green-600" /> : contreEtude.ecart_devis > 0 ? <TrendingUp className="h-4 w-4 text-red-600" /> : null}
                       Écart
                     </span>
-                    <span className={`font-bold ${
-                      contreEtude.ecart_devis < 0 ? 'text-green-600' :
-                      contreEtude.ecart_devis > 0 ? 'text-red-600' : 'text-neutral-600'
-                    }`}>
+                    <span className={`font-bold ${contreEtude.ecart_devis < 0 ? 'text-green-600' : contreEtude.ecart_devis > 0 ? 'text-red-600' : 'text-neutral-600'}`}>
                       {contreEtude.ecart_devis >= 0 ? '+' : ''}{formatCurrency(contreEtude.ecart_devis)}
                     </span>
                   </div>
@@ -812,17 +995,100 @@ function EtapeContreEtude({ fiche, onUpdate }) {
         </TabsContent>
       </Tabs>
 
-      {/* Bouton enregistrer bas de page */}
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={saving || !hasChanges}
-          className={`transition-colors ${
-            hasChanges ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-neutral-200 text-neutral-500 cursor-not-allowed'
-          }`}
-        >
+          className={`transition-colors ${hasChanges ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-neutral-200 text-neutral-500 cursor-not-allowed'}`}>
           <Save className="h-4 w-4 mr-2" />
           {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Vue liste des devis (cards) + détail dépliable
+function EtapeContreEtude({ fiche, onUpdate }) {
+  const [devisList, setDevisList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDevis, setSelectedDevis] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    ficheApi.getDevisList(fiche.code)
+      .then(r => {
+        setDevisList(r.data || []);
+        // Auto-ouvrir si 1 seul devis
+        if (r.data?.length === 1) setSelectedDevis(r.data[0]);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [fiche.code]);
+
+  const ETAT_COLOR = {
+    'Accepté':           'bg-emerald-50 text-emerald-700 border-emerald-200',
+    'Facture totale':    'bg-neutral-800 text-white border-neutral-800',
+    'Facture partielle': 'bg-neutral-200 text-neutral-700 border-neutral-300',
+    'À établir':         'bg-amber-50 text-amber-700 border-amber-200',
+    'Refusé':            'bg-red-50 text-red-700 border-red-200',
+  };
+
+  if (selectedDevis) {
+    return <DevisDetail fiche={fiche} devisInfo={selectedDevis} onClose={() => setSelectedDevis(null)} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-neutral-900">Devis du chantier</h3>
+          <p className="text-xs text-neutral-500 mt-0.5">Sélectionnez un devis pour accéder au détail déboursé et à la contre-étude</p>
+        </div>
+        {!loading && <span className="text-xs text-neutral-400">{devisList.length} devis</span>}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12 gap-2 text-neutral-400 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" /> Chargement des devis Optim…
+        </div>
+      ) : devisList.length === 0 ? (
+        <Card className="border border-neutral-200">
+          <CardContent className="py-12 text-center text-neutral-500 text-sm">
+            Aucun devis associé à ce chantier dans Optim
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {devisList.map(d => (
+            <Card key={d.vde_id}
+              onClick={() => setSelectedDevis(d)}
+              className="border border-neutral-200 hover:border-[#D32F2F]/40 hover:shadow-md cursor-pointer group transition-all bg-white"
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="min-w-0 flex-1">
+                    <code className="text-xs font-mono text-[#D32F2F] font-semibold">{d.reference}</code>
+                    {d.libelle && (
+                      <p className="text-sm font-medium text-neutral-800 mt-1 line-clamp-2 leading-snug">{d.libelle}</p>
+                    )}
+                  </div>
+                  <Badge variant="outline" className={`ml-2 flex-shrink-0 text-[10px] ${ETAT_COLOR[d.etat] || 'bg-neutral-100 text-neutral-500'}`}>
+                    {d.etat}
+                  </Badge>
+                </div>
+                <Separator className="my-3 bg-neutral-100" />
+                <div className="flex items-center justify-between text-xs text-neutral-500">
+                  <span>{d.date_doc ? new Date(d.date_doc).toLocaleDateString('fr-FR') : '—'}</span>
+                  <span className="font-semibold text-neutral-700">{formatCurrency(d.total_ht)} HT</span>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <span className="text-[10px] text-neutral-400">Cliquer pour ouvrir</span>
+                  <ArrowRight size={14} className="text-neutral-300 group-hover:text-[#D32F2F] transition-colors" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

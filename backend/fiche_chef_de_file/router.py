@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 import pymysql
 
 from database import fiche_chantiers_col
-from optim.queries import get_chantier_by_code, get_devis_by_vde_id
+from optim.queries import get_chantier_by_code, get_devis_by_vde_id, get_devis_list_for_chantier, get_devis_f11_full
 
 logger = logging.getLogger(__name__)
 
@@ -252,10 +252,9 @@ async def get_chefs_de_file():
 @fiche_router.get("/{code_chantier}/devis")
 async def get_devis(code_chantier: str):
     """
-    Retourne les lignes du devis Optim pour un marché (lecture seule).
-    Requête directe sur vte_doc_ligne via l'optim_id stocké en MongoDB.
+    Retourne le détail déboursé (PAU/PAT) du devis principal du marché (optim_id).
     """
-    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"optim_id": 1})
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"optim_id": 1, "chantier_id": 1})
     if not fiche:
         raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
 
@@ -265,6 +264,44 @@ async def get_devis(code_chantier: str):
 
     try:
         devis = await asyncio.to_thread(get_devis_by_vde_id, optim_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
+
+    return devis
+
+
+@fiche_router.get("/{code_chantier}/devis-list")
+async def get_devis_list(code_chantier: str):
+    """
+    Retourne la liste de tous les devis (VDE) du chantier.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"chantier_id": 1})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    cht_id = fiche.get("chantier_id")
+    if not cht_id:
+        return []
+
+    try:
+        devis_list = await asyncio.to_thread(get_devis_list_for_chantier, cht_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
+
+    return devis_list
+
+
+@fiche_router.get("/{code_chantier}/devis/{vde_id}")
+async def get_devis_by_id(code_chantier: str, vde_id: int):
+    """
+    Retourne le détail déboursé d'un devis spécifique par son VDE_ID.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"_id": 0, "code": 1})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    try:
+        devis = await asyncio.to_thread(get_devis_f11_full, vde_id)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
 

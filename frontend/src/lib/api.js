@@ -100,6 +100,8 @@ export const ficheApi = {
   getConducteurs: () => api.get('/fiches/referentiels/conducteurs'),
   getChefsDeFile: () => api.get('/fiches/referentiels/chefs-de-file'),
   getDevis: (code) => api.get(`/fiches/${code}/devis`),
+  getDevisList: (code) => api.get(`/fiches/${code}/devis-list`),
+  getDevisById: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}`),
 };
 
 export default api;

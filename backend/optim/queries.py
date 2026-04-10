@@ -121,32 +121,78 @@ def get_chantier_by_code(code: str) -> dict | None:
 
 _SQL_DEVIS_LIGNES = """
 SELECT
-    VDL_ID          AS id,
-    VDL_NumLigne    AS numero_ligne,
-    VDL_Libelle     AS designation,
-    VDL_LibUnite    AS unite,
-    VDL_Qte         AS quantite,
-    VDL_PVU         AS prix_unitaire,
-    VDL_MtHT        AS montant
-FROM vte_doc_ligne
-WHERE VDL_VDE_ID   = %s
-  AND VDL_IsDesactive = 0
-  AND VDL_IsVideTexte = 0
-ORDER BY VDL_Ordre
+    l.VDL_ID          AS id,
+    l.VDL_NumLigne    AS numero_ligne,
+    l.VDL_Libelle     AS designation,
+    l.VDL_LibUnite    AS unite,
+    l.VDL_Qte         AS quantite,
+    l.VDL_PAU         AS prix_unitaire,
+    l.VDL_PAT         AS montant,
+    l.VDL_NbHU        AS nb_heures_unitaire,
+    l.VDL_NbHTot      AS nb_heures_total,
+    l.VDL_Commentaire AS commentaire,
+    COALESCE(t.TRS_NomReduit, t.TRS_RaisonSociale) AS fournisseur,
+    CASE COALESCE(fty_par.FTY_ID, fty.FTY_ID)
+        WHEN 4  THEN 'MO'   -- Main d'Oeuvre
+        WHEN 6  THEN 'MAT'  -- Matériaux
+        WHEN 22 THEN 'MAT'  -- Consommables → Matériaux
+        WHEN 8  THEN 'ST'   -- Sous-Traitance
+        WHEN 7  THEN 'LOC'  -- Engin/Matériel
+        WHEN 29 THEN 'LOC'  -- Location
+        WHEN 9  THEN 'FR'   -- Frais
+        WHEN 18 THEN 'VTE'  -- Vente
+        ELSE ''
+    END AS categorie,
+    COALESCE(fty.FTY_Libelle, '') AS famille
+FROM vte_doc_ligne l
+LEFT JOIN bib_tiers t ON t.TRS_ID = l.VDL_TRS_ID AND l.VDL_TRS_ID > 0
+LEFT JOIN ref_famille_type fty     ON fty.FTY_ID     = l.VDL_FTY_ID  AND l.VDL_FTY_ID > 0
+LEFT JOIN ref_famille_type fty_par ON fty_par.FTY_ID = fty.FTY_FTY_ID
+WHERE l.VDL_VDE_ID    = %s
+  AND l.VDL_IsDesactive = 0
+  AND l.VDL_IsVideTexte = 0
+ORDER BY l.VDL_Ordre
 """
 
 _SQL_DEVIS_TOTAUX = """
 SELECT
-    VDE_MtHTNet  AS total_ht,
-    VDE_MtTTCNet AS total_ttc
+    VDE_ID          AS vde_id,
+    VDE_Reference   AS reference,
+    VDE_Libelle     AS libelle,
+    VDE_DateDoc     AS date_doc,
+    VDE_EtatMarche  AS etat,
+    VDE_MtHTNet     AS total_ht,
+    VDE_MtTTCNet    AS total_ttc
 FROM vte_doc_entete
 WHERE VDE_ID = %s
 """
 
+_SQL_DEVIS_LIST = """
+SELECT
+    vde.VDE_ID          AS vde_id,
+    vde.VDE_Reference   AS reference,
+    vde.VDE_Libelle     AS libelle,
+    vde.VDE_DateDoc     AS date_doc,
+    vde.VDE_EtatMarche  AS etat,
+    vde.VDE_MtHTNet     AS total_ht,
+    vde.VDE_MtTTCNet    AS total_ttc
+FROM vte_doc_entete vde
+WHERE vde.VDE_CHT_ID = %s
+  AND vde.VDE_IsMarche = 1
+  AND vde.VDE_EtatMarche IN (640, 311, 715)
+ORDER BY vde.VDE_DateDoc ASC
+"""
+
+_ETAT_LABELS = {
+    311: "Facture totale", 640: "Accepté", 642: "À établir",
+    643: "Refusé", 644: "En attente", 645: "Annulé", 715: "Facture partielle",
+}
+
 
 def get_devis_by_vde_id(vde_id: int) -> dict:
     """
-    Retourne les lignes et totaux du devis pour un marché (VDE_ID = optim_id).
+    Retourne les lignes (détail déboursé PAU/PAT) et totaux du devis pour un VDE_ID.
+    Inclut fournisseur via jointure bib_tiers.
     """
     with get_optim_connection() as conn:
         with conn.cursor() as cursor:
@@ -154,22 +200,33 @@ def get_devis_by_vde_id(vde_id: int) -> dict:
             lignes = cursor.fetchall()
 
             cursor.execute(_SQL_DEVIS_TOTAUX, (vde_id,))
-            totaux = cursor.fetchone() or {"total_ht": 0, "total_ttc": 0}
+            meta = cursor.fetchone() or {}
 
-    total_ht  = float(totaux.get("total_ht") or 0)
-    total_ttc = float(totaux.get("total_ttc") or 0)
+    total_ht  = float(meta.get("total_ht") or 0)
+    total_ttc = float(meta.get("total_ttc") or 0)
     tva       = total_ttc - total_ht
 
     return {
+        "vde_id":    vde_id,
+        "reference": meta.get("reference") or "",
+        "libelle":   meta.get("libelle") or "",
+        "date_doc":  meta.get("date_doc").isoformat() if meta.get("date_doc") else None,
+        "etat":      _ETAT_LABELS.get(meta.get("etat"), str(meta.get("etat") or "")),
         "lignes": [
             {
-                "id":           str(l["id"]),
-                "numero_ligne": l.get("numero_ligne") or "",
-                "designation":  l.get("designation") or "",
-                "unite":        l.get("unite") or "",
-                "quantite":     float(l.get("quantite") or 0),
-                "prix_unitaire": float(l.get("prix_unitaire") or 0),
-                "montant":      float(l.get("montant") or 0),
+                "id":                  str(l["id"]),
+                "numero_ligne":        l.get("numero_ligne") or "",
+                "designation":         l.get("designation") or "",
+                "unite":               l.get("unite") or "",
+                "quantite":            float(l.get("quantite") or 0),
+                "prix_unitaire":       float(l.get("prix_unitaire") or 0),
+                "montant":             float(l.get("montant") or 0),
+                "nb_heures_unitaire":  float(l.get("nb_heures_unitaire") or 0),
+                "nb_heures_total":     float(l.get("nb_heures_total") or 0),
+                "commentaire":         l.get("commentaire") or "",
+                "fournisseur":         l.get("fournisseur") or "",
+                "categorie":           l.get("categorie") or "",
+                "famille":             l.get("famille") or "",
             }
             for l in lignes
         ],
@@ -177,3 +234,140 @@ def get_devis_by_vde_id(vde_id: int) -> dict:
         "tva":       tva,
         "total_ttc": total_ttc,
     }
+
+
+_SQL_F11_LIGNES = """
+SELECT
+    etp.ETP_ID          AS id,
+    etp.ETP_Code        AS numero_ligne,
+    etp.ETP_Libelle     AS designation,
+    etp.ETP_LibUnite    AS unite,
+    etp.ETP_Qte         AS quantite,
+    etp.ETP_PAU         AS prix_unitaire,
+    etp.ETP_PAT         AS montant,
+    etp.ETP_NbHeures    AS nb_heures,
+    etp.ETP_TypeLigne   AS type_ligne,
+    etp.ETP_Niveau      AS niveau,
+    etp.ETP_Hierarchie  AS hierarchie,
+    etp.ETP_OrdreETP    AS ordre_affichage,
+    COALESCE(fty.FTY_Libelle, '')                           AS sous_famille,
+    COALESCE(fty_par.FTY_Libelle, fty.FTY_Libelle, '')     AS type_famille,
+    CASE COALESCE(fty_par.FTY_ID, fty.FTY_ID)
+        WHEN 4  THEN 'MO'
+        WHEN 6  THEN 'MAT'
+        WHEN 22 THEN 'MAT'
+        WHEN 8  THEN 'ST'
+        WHEN 7  THEN 'LOC'
+        WHEN 29 THEN 'LOC'
+        WHEN 9  THEN 'FR'
+        WHEN 18 THEN 'VTE'
+        ELSE ''
+    END AS categorie
+FROM afc_etude etu
+INNER JOIN afc_etude_prix_detail etp
+        ON etp.ETP_ETU_ID = etu.ETU_ID
+       AND etp.ETP_IsDesactive = 0
+       AND etp.ETP_TypeLigne IN (1, 2)
+LEFT JOIN ref_famille_type fty
+       ON fty.FTY_ID = etp.ETP_FTY_ID
+      AND etp.ETP_FTY_ID > 0
+LEFT JOIN ref_famille_type fty_par
+       ON fty_par.FTY_ID = fty.FTY_FTY_ID
+WHERE etu.ETU_VDE_ID = %s
+  AND etu.ETU_Type = 111
+ORDER BY etp.ETP_OrdreETP
+"""
+
+
+def _assign_ouvrage_categories(rows: list[dict]) -> list[dict]:
+    """
+    Les ouvrages (TypeLigne=2) n'ont pas de FTY_ID → categorie=''.
+    On leur assigne la catégorie + sous_famille du prochain TL=1 qui suit.
+    """
+    for i, row in enumerate(rows):
+        if row["type_ligne"] == 2 and not row["categorie"]:
+            for j in range(i + 1, len(rows)):
+                if rows[j]["type_ligne"] == 1 and rows[j]["categorie"]:
+                    row["categorie"]   = rows[j]["categorie"]
+                    row["sous_famille"] = rows[j]["sous_famille"]
+                    break
+    return rows
+
+
+def get_devis_f11_full(vde_id: int) -> dict:
+    """
+    Retourne les lignes F11 (afc_etude_prix_detail) + totaux (vte_doc_entete)
+    pour un VDE_ID.
+    TypeLigne=2 = ouvrage composé (bold, sans Qté/PAU)
+    TypeLigne=1 = ressource individuelle (indentée, toutes colonnes)
+    """
+    with get_optim_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(_SQL_F11_LIGNES, (vde_id,))
+            raw_rows = cursor.fetchall()
+
+            cursor.execute(_SQL_DEVIS_TOTAUX, (vde_id,))
+            meta = cursor.fetchone() or {}
+
+    rows = _assign_ouvrage_categories([
+        {
+            "id":            str(r["id"]),
+            "numero_ligne":  r.get("numero_ligne") or "",
+            "designation":   r.get("designation") or "",
+            "unite":         r.get("unite") or "",
+            "quantite":      float(r.get("quantite") or 0),
+            "prix_unitaire": float(r.get("prix_unitaire") or 0),
+            "montant":       float(r.get("montant") or 0),
+            "nb_heures":     float(r.get("nb_heures") or 0),
+            "type_ligne":    int(r.get("type_ligne") or 0),
+            "niveau":        int(r.get("niveau") or 0),
+            "hierarchie":    r.get("hierarchie") or "",
+            "sous_famille":  r.get("sous_famille") or "",
+            "categorie":     r.get("categorie") or "",
+            "type_famille":  r.get("type_famille") or "",
+            # compat contre-étude copy
+            "fournisseur":   "",
+            "commentaire":   "",
+            "famille":       r.get("sous_famille") or "",
+        }
+        for r in raw_rows
+    ])
+
+    total_ht  = float(meta.get("total_ht") or 0)
+    total_ttc = float(meta.get("total_ttc") or 0)
+    tva       = total_ttc - total_ht
+
+    return {
+        "vde_id":    vde_id,
+        "reference": meta.get("reference") or "",
+        "libelle":   meta.get("libelle") or "",
+        "date_doc":  meta.get("date_doc").isoformat() if meta.get("date_doc") else None,
+        "etat":      _ETAT_LABELS.get(meta.get("etat"), str(meta.get("etat") or "")),
+        "lignes":    rows,
+        "total_ht":  total_ht,
+        "tva":       tva,
+        "total_ttc": total_ttc,
+    }
+
+
+def get_devis_list_for_chantier(cht_id: int) -> list[dict]:
+    """
+    Retourne la liste de tous les devis (VDE) pour un CHT_ID donné.
+    """
+    with get_optim_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(_SQL_DEVIS_LIST, (cht_id,))
+            rows = cursor.fetchall()
+
+    return [
+        {
+            "vde_id":    r["vde_id"],
+            "reference": r.get("reference") or "",
+            "libelle":   r.get("libelle") or "",
+            "date_doc":  r["date_doc"].isoformat() if r.get("date_doc") else None,
+            "etat":      _ETAT_LABELS.get(r.get("etat"), str(r.get("etat") or "")),
+            "total_ht":  float(r.get("total_ht") or 0),
+            "total_ttc": float(r.get("total_ttc") or 0),
+        }
+        for r in rows
+    ]
