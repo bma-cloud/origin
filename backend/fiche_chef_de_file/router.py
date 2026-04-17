@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 import pymysql
 
 from database import fiche_chantiers_col
-from optim.queries import get_chantier_by_code, get_devis_by_vde_id, get_devis_list_for_chantier, get_devis_f11_full
+from optim.queries import get_chantier_by_code, get_devis_by_vde_id, get_devis_commercial_lines, get_devis_list_for_chantier, get_devis_f11_full
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,11 @@ fiche_router = APIRouter(prefix="/api/fiches", tags=["Fiche Chef de File"])
 STATUTS_VALIDES = {"non_commence", "en_cours", "termine"}
 
 # Nombre d'étapes de suivi de la Fiche Chef de File
-NB_ETAPES = 12
+NB_ETAPES = 11
 
 
 def _build_etapes_initiales() -> list[dict]:
-    """Génère les 13 étapes vierges pour un nouveau document."""
+    """Génère les 11 étapes vierges pour un nouveau document."""
     return [
         {"numero": i, "statut": "non_commence", "taches": []}
         for i in range(1, NB_ETAPES + 1)
@@ -91,6 +91,24 @@ def _doc_depuis_optim(chantier: dict, now: str) -> dict:
         "synced_at": now,
         "created_at": now,
     }
+
+
+# ---------------------------------------------------------------------------
+# Migration : suppression étape 12 sur les fiches existantes
+# ---------------------------------------------------------------------------
+
+async def migrate_remove_etape_12():
+    """
+    Migration one-shot : retire les étapes 12 et 13 de toutes les fiches existantes.
+    Sans effet si déjà migrées.
+    """
+    for num in (12, 13):
+        result = await fiche_chantiers_col.update_many(
+            {"etapes.numero": num},
+            {"$pull": {"etapes": {"numero": num}}}
+        )
+        if result.modified_count:
+            logger.info(f"Migration étapes : étape {num} retirée de {result.modified_count} fiche(s).")
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +326,26 @@ async def get_devis_by_id(code_chantier: str, vde_id: int):
     return devis
 
 
+@fiche_router.get("/{code_chantier}/devis/{vde_id}/commercial")
+async def get_devis_commercial_by_id(code_chantier: str, vde_id: int):
+    """
+    Retourne les lignes commerciales (vte_doc_ligne) du devis — prix de vente client.
+    Distinct du déboursé F11 (afc_etude_prix_detail).
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"_id": 0, "code": 1})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    try:
+        devis = await asyncio.to_thread(get_devis_commercial_lines, vde_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
+
+    return devis
+
+
+
+
 # ---------------------------------------------------------------------------
 # Planification (étape 1)
 # ---------------------------------------------------------------------------
@@ -355,21 +393,73 @@ async def update_planification(code_chantier: str, body: dict):
 @fiche_router.put("/{code_chantier}/contre-etude")
 async def update_contre_etude(code_chantier: str, body: dict):
     """
-    Enregistre la contre-étude technique : lignes, totaux, commentaire global.
+    Enregistre la contre-étude structurée par sections (ouvrages) pour un devis donné.
+    Stockée sous la clé contre_etudes.{vde_id} dans le document MongoDB.
+
+    Body attendu :
+      vde_id            : int   — identifiant du devis Optim
+      sections          : dict  — { [ouvrage_id]: { lignes: [...] } }
+      commentaire_global: str
+      total_ht          : float — total CE calculé côté frontend
+      ecart_devis       : float — delta = devis_ht - ce_ht (positif = gain)
     """
     fiche = await fiche_chantiers_col.find_one({"code": code_chantier})
     if not fiche:
         raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
 
+    vde_id = body.get("vde_id")
+    if not vde_id:
+        raise HTTPException(status_code=400, detail="vde_id requis")
+
     contre_etude = {
-        "lignes":            body.get("lignes", []),
-        "total_ht":          float(body.get("total_ht", 0)),
-        "ecart_devis":       float(body.get("ecart_devis", 0)),
+        "vde_id":             int(vde_id),
+        "sections":           body.get("sections", {}),
         "commentaire_global": body.get("commentaire_global") or "",
+        "total_ht":           float(body.get("total_ht", 0)),
+        "ecart_devis":        float(body.get("ecart_devis", 0)),
+        "updated_at":         datetime.now(timezone.utc).isoformat(),
     }
 
     await fiche_chantiers_col.update_one(
         {"code": code_chantier},
-        {"$set": {"contre_etude": contre_etude}}
+        {"$set": {f"contre_etudes.{vde_id}": contre_etude}}
     )
-    return {"ok": True, "contre_etude": contre_etude}
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Fiche Préparation de Chantier (étape 5)
+# ---------------------------------------------------------------------------
+
+@fiche_router.put("/{code_chantier}/checklist-chantier")
+async def update_checklist_chantier(code_chantier: str, body: dict):
+    """
+    Enregistre la checklist chantier complète (étape 6).
+    Le body est stocké tel quel sous la clé checklist_chantier du document.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    await fiche_chantiers_col.update_one(
+        {"code": code_chantier},
+        {"$set": {"checklist_chantier": body}}
+    )
+    return {"ok": True}
+
+
+@fiche_router.put("/{code_chantier}/fiche-prepa")
+async def update_fiche_prepa(code_chantier: str, body: dict):
+    """
+    Enregistre la Fiche Préparation de Chantier complète (étape 5).
+    Le body est stocké tel quel sous la clé fiche_prepa du document.
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    await fiche_chantiers_col.update_one(
+        {"code": code_chantier},
+        {"$set": {"fiche_prepa": body}}
+    )
+    return {"ok": True}

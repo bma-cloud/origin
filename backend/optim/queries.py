@@ -236,6 +236,95 @@ def get_devis_by_vde_id(vde_id: int) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Devis commercial — lignes vte_doc_ligne avec prix de vente
+# Champs validés via DESCRIBE vte_doc_ligne sur la base Optim :
+#   VDL_TypeLigne  → type de ligne (int) : 0=entête, 1=detail, 2=sous-titre, 3=sous-titre2, 4=titre
+#   VDL_Niveau     → profondeur dans l'arborescence (0=racine)
+#   VDL_Libelle    → libellé de la ligne
+#   VDL_LibUnite   → unité
+#   VDL_Qte        → quantité
+#   VDL_PAU        → Prix d'Achat Unitaire (déboursé interne)
+#   VDL_PctVte     → coefficient de marge (%)
+#   VDL_PVU        → Prix de Vente Unitaire HT
+#   VDL_MtHT       → Montant HT total de la ligne (prix vente)
+#   VDL_IsMtFixe   → ligne à montant fixé (1 = oui)
+#   VDL_VDL_ID     → ID de la ligne parente (0 = pas de parent)
+# ---------------------------------------------------------------------------
+_SQL_DEVIS_COMMERCIAL = """
+SELECT
+    vdl.VDL_ID          AS id,
+    vdl.VDL_OrdreVDL    AS ordre,
+    vdl.VDL_NumLigne    AS numero_ligne,
+    vdl.VDL_TypeLigne   AS type_ligne,
+    vdl.VDL_Niveau      AS niveau,
+    vdl.VDL_Code        AS code,
+    vdl.VDL_Libelle     AS designation,
+    vdl.VDL_LibUnite    AS unite,
+    vdl.VDL_Qte         AS quantite,
+    vdl.VDL_PAU         AS pau,
+    vdl.VDL_PctVte      AS coef_vente,
+    vdl.VDL_PVU         AS prix_unitaire,
+    vdl.VDL_MtHT        AS montant,
+    vdl.VDL_IsMtFixe    AS is_fixe,
+    vdl.VDL_VDL_ID      AS parent_id
+FROM vte_doc_ligne vdl
+WHERE vdl.VDL_VDE_ID = %s
+  AND vdl.VDL_IsDesactive = 0
+ORDER BY vdl.VDL_OrdreVDL ASC
+"""
+
+
+def get_devis_commercial_lines(vde_id: int) -> dict:
+    """
+    Retourne les lignes commerciales du devis (vte_doc_ligne) avec les PRIX DE VENTE.
+    Structure : titre → sous-titre → detail, reconstituée via VDL_ParentID.
+    """
+    with get_optim_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(_SQL_DEVIS_COMMERCIAL, (vde_id,))
+            lignes = cursor.fetchall()
+
+            cursor.execute(_SQL_DEVIS_TOTAUX, (vde_id,))
+            meta = cursor.fetchone() or {}
+
+    total_ht  = float(meta.get("total_ht") or 0)
+    total_ttc = float(meta.get("total_ttc") or 0)
+    tva       = total_ttc - total_ht
+
+    return {
+        "vde_id":    vde_id,
+        "reference": meta.get("reference") or "",
+        "libelle":   meta.get("libelle") or "",
+        "date_doc":  meta.get("date_doc").isoformat() if meta.get("date_doc") else None,
+        "etat":      _ETAT_LABELS.get(meta.get("etat"), str(meta.get("etat") or "")),
+        "lignes": [
+            {
+                "id":           str(l["id"]),
+                "ordre":        int(l.get("ordre") or 0),
+                "numero_ligne": l.get("numero_ligne") or "",
+                "type_ligne":   int(l.get("type_ligne") or 0),  # 0=entête, 1=detail, 2=sous-titre, 3=sous-titre2, 4=titre
+                "niveau":       int(l.get("niveau") or 0),
+                "code":         l.get("code") or "",
+                "designation":  l.get("designation") or "",
+                "unite":        l.get("unite") or "",
+                "quantite":     float(l.get("quantite") or 0),
+                "pau":          float(l.get("pau") or 0),
+                "coef_vente":   float(l.get("coef_vente") or 0),
+                "prix_unitaire": float(l.get("prix_unitaire") or 0),
+                "montant":      float(l.get("montant") or 0),
+                "is_fixe":      bool(l.get("is_fixe")),
+                # VDL_VDL_ID = 0 means no parent (root level)
+                "parent_id":    str(l["parent_id"]) if l.get("parent_id") else None,
+            }
+            for l in lignes
+        ],
+        "total_ht":  total_ht,
+        "tva":       tva,
+        "total_ttc": total_ttc,
+    }
+
+
 _SQL_F11_LIGNES = """
 SELECT
     etp.ETP_ID          AS id,

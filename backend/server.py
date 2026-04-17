@@ -1032,6 +1032,10 @@ async def startup():
 
     logger.info("BTP Manager API ready")
 
+    # Migration : suppression étape 12 sur les fiches existantes
+    from fiche_chef_de_file.router import migrate_remove_etape_12
+    await migrate_remove_etape_12()
+
     # Sync Optim BTP → MongoDB en tâche de fond (non bloquant)
     asyncio.create_task(_sync_task())
 

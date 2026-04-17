@@ -30,6 +30,10 @@ api.interceptors.response.use(
 
 // Helper to format API errors
 export function formatApiError(error) {
+  if (!error.response) {
+    // Network error — backend unreachable
+    return 'Impossible de joindre le serveur. Vérifiez votre connexion ou réessayez.';
+  }
   const detail = error.response?.data?.detail;
   if (detail == null) return 'Une erreur est survenue. Veuillez réessayer.';
   if (typeof detail === 'string') return detail;
@@ -97,11 +101,14 @@ export const ficheApi = {
   updateEtape: (code, numero, statut) => api.patch(`/fiches/${code}/etapes/${numero}`, { statut }),
   updatePlanification: (code, data) => api.put(`/fiches/${code}/planification`, data),
   updateContreEtude: (code, data) => api.put(`/fiches/${code}/contre-etude`, data),
+  updateFichePrepa: (code, data) => api.put(`/fiches/${code}/fiche-prepa`, data),
+  updateChecklistChantier: (code, data) => api.put(`/fiches/${code}/checklist-chantier`, data),
   getConducteurs: () => api.get('/fiches/referentiels/conducteurs'),
   getChefsDeFile: () => api.get('/fiches/referentiels/chefs-de-file'),
   getDevis: (code) => api.get(`/fiches/${code}/devis`),
   getDevisList: (code) => api.get(`/fiches/${code}/devis-list`),
   getDevisById: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}`),
+  getDevisCommercial: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}/commercial`),
 };
 
 export default api;
