@@ -109,6 +109,7 @@ export const ficheApi = {
   getDevisList: (code) => api.get(`/fiches/${code}/devis-list`),
   getDevisById: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}`),
   getDevisCommercial: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}/commercial`),
+  getDebours: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}/debours-devis`),
 };
 
 export default api;

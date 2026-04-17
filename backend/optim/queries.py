@@ -439,6 +439,170 @@ def get_devis_f11_full(vde_id: int) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Déboursé depuis le devis commercial (vte_doc_ligne)
+#
+# LOGIQUE VALIDÉE PAR AUDIT (audit_debours_result.txt) :
+#   - TypeLigne=1  → ressource individuelle (seules lignes portant PAU réel)
+#   - TypeLigne=2  → sous-titre / ouvrage composé (agrégat de ses enfants)
+#   - TypeLigne=0,3,4,5,9 → agrégats ou textes — IGNORÉS pour éviter double-comptage
+#
+# Équivalence exacte avec F11 (afc_etude_prix_detail) vérifiée sur VDE_ID=6218 :
+#   Σ(VDL_PAT, TL=1) == Σ(ETP_PAT, TL=1) = total déboursé
+#   VDL_PAT  = VDL_PAU × VDL_Qte  (coût brut, avant coef vente)
+#   VDL_MtHT = prix de vente final (avec coef marge) — NE PAS utiliser pour le déboursé
+#
+# Catégories via VDL_FTY_ID → ref_famille_type : même mapping que F11.
+# ---------------------------------------------------------------------------
+_SQL_DEBOURS_FROM_DEVIS = """
+SELECT
+    l.VDL_ID          AS id,
+    l.VDL_TypeLigne   AS type_ligne,
+    l.VDL_Niveau      AS niveau,
+    l.VDL_OrdreVDL    AS ordre_affichage,
+    l.VDL_NumLigne    AS numero_ligne,
+    l.VDL_Libelle     AS designation,
+    l.VDL_LibUnite    AS unite,
+    l.VDL_Qte         AS quantite,
+    l.VDL_PAU         AS prix_unitaire,
+    l.VDL_PAT         AS montant,
+    l.VDL_NbHTot      AS nb_heures,
+    l.VDL_Commentaire AS commentaire,
+    COALESCE(t.TRS_NomReduit, t.TRS_RaisonSociale, '') AS fournisseur,
+    COALESCE(fty.FTY_Libelle, '')                           AS sous_famille,
+    COALESCE(fty_par.FTY_Libelle, fty.FTY_Libelle, '')     AS type_famille,
+    CASE COALESCE(fty_par.FTY_ID, fty.FTY_ID)
+        WHEN 4  THEN 'MO'
+        WHEN 6  THEN 'MAT'
+        WHEN 22 THEN 'MAT'
+        WHEN 8  THEN 'ST'
+        WHEN 7  THEN 'LOC'
+        WHEN 29 THEN 'LOC'
+        WHEN 9  THEN 'FR'
+        WHEN 18 THEN 'VTE'
+        ELSE ''
+    END AS categorie
+FROM vte_doc_ligne l
+LEFT JOIN bib_tiers t
+       ON t.TRS_ID = l.VDL_TRS_ID AND l.VDL_TRS_ID > 0
+LEFT JOIN ref_famille_type fty
+       ON fty.FTY_ID = l.VDL_FTY_ID AND l.VDL_FTY_ID > 0
+LEFT JOIN ref_famille_type fty_par
+       ON fty_par.FTY_ID = fty.FTY_FTY_ID
+WHERE l.VDL_VDE_ID    = %s
+  AND l.VDL_IsDesactive = 0
+  AND l.VDL_TypeLigne IN (1, 2)
+ORDER BY l.VDL_OrdreVDL ASC
+"""
+
+
+def get_debours_from_devis(vde_id: int) -> dict:
+    """
+    Génère le déboursé (structure contre-étude) directement depuis vte_doc_ligne,
+    sans passer par afc_etude_prix_detail (F11).
+
+    Retourne le même format que get_devis_f11_full() : compatible avec
+    groupF11ByOuvrage() et ContreEtudeStructuree côté frontend.
+
+    Règle de calcul :
+      montant (type=1) = VDL_PAT = VDL_PAU × VDL_Qte  (déboursé brut)
+      montant (type=2) = VDL_PAT = Σ PAT des enfants   (sous-total ouvrage)
+    """
+    with get_optim_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(_SQL_DEBOURS_FROM_DEVIS, (vde_id,))
+            raw_rows = cursor.fetchall()
+
+            cursor.execute(_SQL_DEVIS_TOTAUX, (vde_id,))
+            meta = cursor.fetchone() or {}
+
+    rows = _assign_ouvrage_categories([
+        {
+            "id":            str(r["id"]),
+            "numero_ligne":  r.get("numero_ligne") or "",
+            "designation":   r.get("designation") or "",
+            "unite":         r.get("unite") or "",
+            "quantite":      float(r.get("quantite") or 0),
+            "prix_unitaire": float(r.get("prix_unitaire") or 0),
+            "montant":       float(r.get("montant") or 0),
+            "nb_heures":     float(r.get("nb_heures") or 0),
+            "type_ligne":    int(r.get("type_ligne") or 0),
+            "niveau":        int(r.get("niveau") or 0),
+            "hierarchie":    "",  # pas dans vte_doc_ligne, non utilisé côté frontend
+            "sous_famille":  r.get("sous_famille") or "",
+            "categorie":     r.get("categorie") or "",
+            "type_famille":  r.get("type_famille") or "",
+            "fournisseur":   r.get("fournisseur") or "",
+            "commentaire":   r.get("commentaire") or "",
+            "famille":       r.get("sous_famille") or "",
+        }
+        for r in raw_rows
+    ])
+
+    # total_ht ici = Σ(PAT, type=1) = total déboursé (pas le prix de vente VDE_MtHTNet)
+    total_debours = sum(r["montant"] for r in rows if r["type_ligne"] == 1)
+    total_ttc_vente = float(meta.get("total_ttc") or 0)
+
+    return {
+        "vde_id":    vde_id,
+        "reference": meta.get("reference") or "",
+        "libelle":   meta.get("libelle") or "",
+        "date_doc":  meta.get("date_doc").isoformat() if meta.get("date_doc") else None,
+        "etat":      _ETAT_LABELS.get(meta.get("etat"), str(meta.get("etat") or "")),
+        "lignes":    rows,
+        "total_ht":  total_debours,
+        "tva":       0.0,
+        "total_ttc": total_ttc_vente,
+        "source":    "devis",  # tag pour validation : "devis" vs "f11"
+    }
+
+
+def validate_debours_sources(vde_id: int) -> dict:
+    """
+    Compare le déboursé généré depuis vte_doc_ligne avec celui issu de F11.
+    Retourne un rapport de validation : totaux, nb lignes, écart absolu.
+    Utiliser pour vérifier que get_debours_from_devis() == get_devis_f11_full().
+    """
+    from collections import defaultdict
+
+    devis = get_debours_from_devis(vde_id)
+    f11   = get_devis_f11_full(vde_id)
+
+    def totals_by_cat(lignes: list[dict]) -> dict:
+        t: dict = defaultdict(float)
+        for l in lignes:
+            if l["type_ligne"] == 1:
+                t[l["categorie"] or ""] += l["montant"]
+        return dict(t)
+
+    devis_cat = totals_by_cat(devis["lignes"])
+    f11_cat   = totals_by_cat(f11["lignes"])
+
+    all_cats = sorted(set(devis_cat) | set(f11_cat))
+    cat_diff = {
+        c: {
+            "devis": round(devis_cat.get(c, 0), 2),
+            "f11":   round(f11_cat.get(c, 0), 2),
+            "ecart": round(devis_cat.get(c, 0) - f11_cat.get(c, 0), 2),
+        }
+        for c in all_cats
+    }
+
+    total_devis = sum(devis_cat.values())
+    total_f11   = sum(f11_cat.values())
+
+    return {
+        "vde_id":       vde_id,
+        "total_devis":  round(total_devis, 2),
+        "total_f11":    round(total_f11, 2),
+        "ecart_total":  round(total_devis - total_f11, 2),
+        "nb_lignes_devis": len([l for l in devis["lignes"] if l["type_ligne"] == 1]),
+        "nb_lignes_f11":   len([l for l in f11["lignes"]   if l["type_ligne"] == 1]),
+        "par_categorie": cat_diff,
+        "ok": abs(total_devis - total_f11) < 0.02,  # tolérance 2 centimes
+    }
+
+
 def get_devis_list_for_chantier(cht_id: int) -> list[dict]:
     """
     Retourne la liste de tous les devis (VDE) pour un CHT_ID donné.

@@ -5,7 +5,15 @@ from fastapi import APIRouter, HTTPException
 import pymysql
 
 from database import fiche_chantiers_col
-from optim.queries import get_chantier_by_code, get_devis_by_vde_id, get_devis_commercial_lines, get_devis_list_for_chantier, get_devis_f11_full
+from optim.queries import (
+    get_chantier_by_code,
+    get_devis_by_vde_id,
+    get_devis_commercial_lines,
+    get_devis_list_for_chantier,
+    get_devis_f11_full,
+    get_debours_from_devis,
+    validate_debours_sources,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +352,53 @@ async def get_devis_commercial_by_id(code_chantier: str, vde_id: int):
     return devis
 
 
+
+
+@fiche_router.get("/{code_chantier}/devis/{vde_id}/debours-devis")
+async def get_debours_from_devis_endpoint(code_chantier: str, vde_id: int):
+    """
+    Retourne le déboursé généré depuis vte_doc_ligne (sans F11).
+
+    Même format que /devis/{vde_id} (qui lit afc_etude_prix_detail).
+    Utiliser pour la contre-étude à terme, une fois la validation validée.
+
+    Règle : seules les lignes TypeLigne=1 portent le PAU réel.
+    montant = VDL_PAT = VDL_PAU × VDL_Qte (déboursé brut, avant coef vente).
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"_id": 0, "code": 1})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    try:
+        devis = await asyncio.to_thread(get_debours_from_devis, vde_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
+
+    return devis
+
+
+@fiche_router.get("/{code_chantier}/devis/{vde_id}/validate-sources")
+async def validate_debours_sources_endpoint(code_chantier: str, vde_id: int):
+    """
+    Compare le déboursé généré depuis vte_doc_ligne vs F11.
+
+    Retourne :
+      ok          : true si l'écart est < 2 centimes (validation OK)
+      total_devis : Σ(PAT, type=1) depuis vte_doc_ligne
+      total_f11   : Σ(PAT, type=1) depuis afc_etude_prix_detail
+      ecart_total : différence (doit être ~0)
+      par_categorie : ventilation par MO/MAT/ST/FR/LOC/FR
+    """
+    fiche = await fiche_chantiers_col.find_one({"code": code_chantier}, {"_id": 0, "code": 1})
+    if not fiche:
+        raise HTTPException(status_code=404, detail=f"Chantier '{code_chantier}' introuvable")
+
+    try:
+        result = await asyncio.to_thread(validate_debours_sources, vde_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Optim BTP inaccessible : {e}")
+
+    return result
 
 
 # ---------------------------------------------------------------------------

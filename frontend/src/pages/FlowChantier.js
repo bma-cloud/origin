@@ -538,7 +538,7 @@ function THCompact({ children, right }) {
   );
 }
 
-function DevisGroupedView({ lignes, total_ht, tva, total_ttc }) {
+function DevisGroupedView({ lignes, total_ht, tva, total_ttc, simpleTotal }) {
   if (!lignes?.length) {
     return <p className="text-center py-8 text-neutral-500 text-sm">Aucune ligne de déboursé</p>;
   }
@@ -658,17 +658,19 @@ function DevisGroupedView({ lignes, total_ht, tva, total_ttc }) {
       <div className="mt-6 flex justify-end">
         <div className="w-64 space-y-2 text-sm">
           <div className="flex justify-between py-2 border-b border-neutral-200">
-            <span className="text-neutral-600">Total déboursé HT</span>
+            <span className="font-bold">Total Déboursé HT</span>
             <span className="font-bold">{formatCurrency(total_ht)}</span>
           </div>
-          <div className="flex justify-between py-2 border-b border-neutral-200">
-            <span className="text-neutral-600">TVA</span>
-            <span>{formatCurrency(tva)}</span>
-          </div>
-          <div className="flex justify-between py-2">
-            <span className="font-bold">Total TTC</span>
-            <span className="font-bold text-lg">{formatCurrency(total_ttc)}</span>
-          </div>
+          {!simpleTotal && <>
+            <div className="flex justify-between py-2 border-b border-neutral-200">
+              <span className="text-neutral-600">TVA</span>
+              <span>{formatCurrency(tva)}</span>
+            </div>
+            <div className="flex justify-between py-2">
+              <span className="font-bold">Total TTC</span>
+              <span className="font-bold text-lg">{formatCurrency(total_ttc)}</span>
+            </div>
+          </>}
         </div>
       </div>
     </>
@@ -718,11 +720,11 @@ function DevisCommercialView({ lignes, total_ht }) {
     <div className="mt-6 flex justify-end">
       <div className="w-64 space-y-2 text-sm">
         <div className="flex justify-between py-2 border-b border-neutral-200">
-          <span className="text-neutral-600">Total PAU</span>
+          <span className="text-neutral-600">Prix d'achat Total HT</span>
           <span className="tabular-nums">{formatCurrency(total_pau)}</span>
         </div>
         <div className="flex justify-between py-2 border-b border-neutral-200">
-          <span className="font-bold">Total HT</span>
+          <span className="font-bold">Prix de vente HT</span>
           <span className="font-bold tabular-nums">{formatCurrency(total_ht)}</span>
         </div>
       </div>
@@ -904,7 +906,7 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
     onSectionsChange(prev => ({ ...prev, [ouvrageId]: { lignes: current.filter((_, i) => i !== idx) } }));
   };
 
-  const resetSection = (ouvrageId, group) => {
+  const resetSection = (ouvrageId) => {
     onSectionsChange(prev => {
       const next = { ...prev };
       delete next[ouvrageId];
@@ -1064,7 +1066,7 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
                     <Plus size={12} className="mr-1" /> Ajouter une ligne
                   </Button>
                   {isModified && (
-                    <Button variant="ghost" size="sm" onClick={() => resetSection(oid, g)}
+                    <Button variant="ghost" size="sm" onClick={() => resetSection(oid)}
                       className="text-xs text-neutral-400 hover:text-amber-600 h-7 px-2">
                       <RefreshCw size={12} className="mr-1" /> Réinitialiser depuis Optim
                     </Button>
@@ -1080,50 +1082,86 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
 }
 
 // ---------------------------------------------------------------------------
-// DebourseContreEtudeView — déboursé CE avec comparaison vs devis (onglet 3)
+// DebourseContreEtudeView — déboursé CE avec comparaison vs devis (onglet 4)
+// Colonne "Variation" = (montant CE − montant devis) / montant devis × 100
+//   négatif → réduction coût → vert
+//   positif → augmentation coût → rouge
+// Lignes dépliables par catégorie avec PAU éditable (synchro bidirectionnelle Contre-étude)
 // ---------------------------------------------------------------------------
-function DebourseContreEtudeView({ devis, sections }) {
+function DebourseContreEtudeView({ devis, sections, onSectionsChange }) {
   const groups = useMemo(() => groupF11ByOuvrage(devis.lignes), [devis.lignes]);
+  const [expandedCats, setExpandedCats] = useState({});
+
+  // map oid → group pour updatePAU
+  const groupByOid = useMemo(() => {
+    const m = {};
+    for (const g of groups) if (g.ouvrage) m[g.ouvrage.id] = g;
+    return m;
+  }, [groups]);
+
+  // Totaux devis par catégorie (type=1 uniquement)
+  const devisTotals = useMemo(() => {
+    const t = {};
+    for (const g of groups) {
+      for (const l of (g.ressources || [])) {
+        const cat = l.categorie || '';
+        t[cat] = (t[cat] || 0) + (parseFloat(l.montant) || 0);
+      }
+    }
+    return t;
+  }, [groups]);
 
   // Totaux CE par catégorie
-  // Non modifié → contribue ouvrage.montant dans la catégorie de l'ouvrage (source Optim fiable)
-  // Modifié     → agrège les montants des lignes saisies par catégorie
+  // Non modifié → ressources type=1 (même source que devisTotals) → variation = 0
+  // Modifié     → lignes CE saisies
   const ceTotals = useMemo(() => {
     const t = {};
     for (const g of groups) {
       if (!g.ouvrage) continue;
       const oid = g.ouvrage.id;
-      if (sections[oid]) {
-        for (const l of (sections[oid].lignes || [])) {
-          const cat = l.categorie || '';
-          t[cat] = (t[cat] || 0) + (parseFloat(l.montant) || 0);
-        }
-      } else {
-        const cat = g.ouvrage.categorie || '';
-        t[cat] = (t[cat] || 0) + (parseFloat(g.ouvrage.montant) || 0);
+      const src = sections[oid] ? sections[oid].lignes : g.ressources;
+      for (const l of src) {
+        const cat = l.categorie || '';
+        t[cat] = (t[cat] || 0) + (parseFloat(l.montant) || 0);
       }
     }
     return t;
   }, [groups, sections]);
 
-  // Totaux devis par catégorie (TL=1 uniquement pour éviter le double-comptage)
-  const devisTotals = useMemo(() => {
-    const t = {};
-    for (const l of (devis.lignes || [])) {
-      if (l.type_ligne !== 1) continue;
-      const cat = l.categorie || '';
-      t[cat] = (t[cat] || 0) + (parseFloat(l.montant) || 0);
+  // Lignes par catégorie avec oid + lineIdx pour PAU éditable
+  const ceLinesByCategory = useMemo(() => {
+    const result = {};
+    for (const g of groups) {
+      if (!g.ouvrage) continue;
+      const oid = g.ouvrage.id;
+      const src = sections[oid] ? sections[oid].lignes : g.ressources;
+      for (let i = 0; i < src.length; i++) {
+        const l = src[i];
+        const cat = l.categorie || '';
+        if (!result[cat]) result[cat] = [];
+        result[cat].push({ oid, lineIdx: i, ...l });
+      }
     }
-    return t;
-  }, [devis.lignes]);
+    return result;
+  }, [groups, sections]);
 
-  // Les deux totaux sont calculés par agrégation de lignes (même source que ceTotals/devisTotals)
-  // → jamais via le champ d'en-tête (devis.total_ht) qui peut diverger du détail lignes
+  // Mise à jour PAU d'une ligne → recalcul montant → synchro sections (Contre-étude)
+  const updatePAU = useCallback((oid, lineIdx, newPAU) => {
+    const group = groupByOid[oid];
+    if (!group) return;
+    const src = sections[oid] ? sections[oid].lignes : group.ressources;
+    const updated = src.map((l, i) => {
+      if (i !== lineIdx) return l;
+      const pau = parseFloat(newPAU) || 0;
+      return { ...l, prix_unitaire: pau, montant: pau * (parseFloat(l.quantite) || 0) };
+    });
+    onSectionsChange(prev => ({ ...prev, [oid]: { lignes: updated } }));
+  }, [sections, groupByOid, onSectionsChange]);
+
   const totalDevis = Object.values(devisTotals).reduce((s, v) => s + v, 0);
   const totalCE    = Object.values(ceTotals).reduce((s, v) => s + v, 0);
-  const ecartTotal = totalDevis - totalCE; // positif = gain
-  const ecartPct   = totalDevis ? (ecartTotal / totalDevis * 100) : 0;
-
+  const ecartTotal = totalDevis - totalCE;
+  const variationTotal = totalDevis ? ((totalCE - totalDevis) / totalDevis * 100) : 0;
   const categories = CATEGORIE_ORDER.filter(c => ceTotals[c] || devisTotals[c]);
 
   return (
@@ -1131,14 +1169,14 @@ function DebourseContreEtudeView({ devis, sections }) {
       {/* Bandeau résumé */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Montant devis HT',  value: formatCurrency(totalDevis),  cls: 'text-neutral-800' },
-          { label: 'Montant CE HT',     value: formatCurrency(totalCE),     cls: 'text-neutral-800' },
+          { label: 'Montant devis HT', value: formatCurrency(totalDevis), cls: 'text-neutral-800' },
+          { label: 'Montant CE HT',    value: formatCurrency(totalCE),    cls: 'text-neutral-800' },
           { label: 'Écart total',
             value: `${ecartTotal >= 0 ? '+' : ''}${formatCurrency(ecartTotal)}`,
             cls: ecartTotal > 0.01 ? 'text-emerald-600' : ecartTotal < -0.01 ? 'text-red-500' : 'text-neutral-400' },
-          { label: 'Écart %',
-            value: `${ecartPct >= 0 ? '+' : ''}${ecartPct.toFixed(1)} %`,
-            cls: ecartTotal > 0.01 ? 'text-emerald-600' : ecartTotal < -0.01 ? 'text-red-500' : 'text-neutral-400' },
+          { label: 'Variation globale',
+            value: `${variationTotal <= 0 ? '' : '+'}${variationTotal.toFixed(1)} %`,
+            cls: variationTotal < -0.01 ? 'text-emerald-600' : variationTotal > 0.01 ? 'text-red-500' : 'text-neutral-400' },
         ].map(({ label, value, cls }) => (
           <div key={label} className="rounded-lg border border-neutral-200 bg-white p-4">
             <p className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mb-1">{label}</p>
@@ -1147,38 +1185,104 @@ function DebourseContreEtudeView({ devis, sections }) {
         ))}
       </div>
 
-      {/* Tableau par catégorie */}
+      {/* Tableau par catégorie avec lignes dépliables */}
       <Card className="border-neutral-200">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="bg-neutral-100">
-                {['Catégorie', 'Devis HT', 'CE HT', 'Écart', '% du total CE'].map((h, i) => (
+                <TableHead className="w-8" />
+                {['Catégorie', 'Devis HT', 'CE HT', 'Écart', 'Variation'].map((h, i) => (
                   <TableHead key={h} className={`text-xs font-semibold uppercase tracking-widest text-neutral-500 ${i > 0 ? 'text-right' : ''}`}>{h}</TableHead>
                 ))}
               </TableRow>
             </TableHeader>
             <TableBody>
               {categories.map(cat => {
-                const devisAmt = devisTotals[cat] || 0;
-                const ceAmt    = ceTotals[cat]    || 0;
-                const ecart    = devisAmt - ceAmt;
-                const pct      = totalCE ? (ceAmt / totalCE * 100) : 0;
+                const devisAmt  = devisTotals[cat] || 0;
+                const ceAmt     = ceTotals[cat]    || 0;
+                const ecart     = devisAmt - ceAmt;
+                // variation = (CE − devis) / devis × 100 : négatif = gain (vert), positif = perte (rouge)
+                const variation = devisAmt ? ((ceAmt - devisAmt) / devisAmt * 100) : 0;
+                const isExpanded = !!expandedCats[cat];
+                const catLines   = ceLinesByCategory[cat] || [];
+
                 return (
-                  <TableRow key={cat} className="border-neutral-100 hover:bg-neutral-50/50">
-                    <TableCell className="font-semibold text-sm">{CATEGORIE_LABELS[cat] || cat || 'Autres'}</TableCell>
-                    <TableCell className="text-right text-sm text-neutral-400 tabular-nums">{formatCurrency(devisAmt)}</TableCell>
-                    <TableCell className="text-right text-sm font-medium tabular-nums">{formatCurrency(ceAmt)}</TableCell>
-                    <TableCell className={`text-right text-sm font-bold tabular-nums ${
-                      ecart > 0.01 ? 'text-emerald-600' : ecart < -0.01 ? 'text-red-500' : 'text-neutral-300'
-                    }`}>
-                      {Math.abs(ecart) > 0.01 ? `${ecart > 0 ? '+' : ''}${formatCurrency(ecart)}` : '—'}
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-neutral-500 tabular-nums">{pct.toFixed(1)} %</TableCell>
-                  </TableRow>
+                  <React.Fragment key={cat}>
+                    {/* Ligne catégorie (cliquable pour déplier) */}
+                    <TableRow
+                      className="border-neutral-100 hover:bg-neutral-50/60 cursor-pointer select-none"
+                      onClick={() => setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }))}
+                    >
+                      <TableCell className="py-2 px-2 w-8">
+                        <ChevronRight size={12} className={`text-neutral-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      </TableCell>
+                      <TableCell className="font-semibold text-sm">{CATEGORIE_LABELS[cat] || cat || 'Autres'}</TableCell>
+                      <TableCell className="text-right text-sm text-neutral-400 tabular-nums">{formatCurrency(devisAmt)}</TableCell>
+                      <TableCell className="text-right text-sm font-medium tabular-nums">{formatCurrency(ceAmt)}</TableCell>
+                      <TableCell className={`text-right text-sm font-bold tabular-nums ${
+                        ecart > 0.01 ? 'text-emerald-600' : ecart < -0.01 ? 'text-red-500' : 'text-neutral-300'
+                      }`}>
+                        {Math.abs(ecart) > 0.01 ? `${ecart > 0 ? '+' : ''}${formatCurrency(ecart)}` : '—'}
+                      </TableCell>
+                      <TableCell className={`text-right text-sm font-semibold tabular-nums ${
+                        variation < -0.01 ? 'text-emerald-600' : variation > 0.01 ? 'text-red-500' : 'text-neutral-300'
+                      }`}>
+                        {Math.abs(variation) > 0.01 ? `${variation > 0 ? '+' : ''}${variation.toFixed(1)} %` : '—'}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Lignes détail dépliées */}
+                    {isExpanded && (
+                      <TableRow key={`${cat}-detail`}>
+                        <TableCell colSpan={6} className="p-0 border-b border-neutral-100">
+                          <div className="bg-neutral-50/60 px-8 py-2">
+                            {catLines.length === 0 ? (
+                              <p className="text-xs text-neutral-400 py-2">Aucune ligne</p>
+                            ) : (
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-neutral-400 border-b border-neutral-100">
+                                    <th className="py-1.5 text-left font-semibold uppercase tracking-wider">Désignation</th>
+                                    <th className="py-1.5 text-center font-semibold uppercase tracking-wider w-12">Un.</th>
+                                    <th className="py-1.5 text-right font-semibold uppercase tracking-wider w-16">Qté</th>
+                                    <th className="py-1.5 text-right font-semibold uppercase tracking-wider w-32">PAU (€)</th>
+                                    <th className="py-1.5 text-right font-semibold uppercase tracking-wider w-28">Montant CE</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {catLines.map((entry) => (
+                                    <tr key={`${entry.oid}-${entry.lineIdx}`} className="border-b border-neutral-50 hover:bg-white/60">
+                                      <td className="py-1.5 text-neutral-700 pr-4">{entry.designation || '—'}</td>
+                                      <td className="py-1.5 text-center text-neutral-500">{entry.unite || '—'}</td>
+                                      <td className="py-1.5 text-right tabular-nums text-neutral-600">{entry.quantite}</td>
+                                      <td className="py-1.5 text-right" onClick={e => e.stopPropagation()}>
+                                        <input
+                                          type="number" step="0.01"
+                                          value={entry.prix_unitaire || 0}
+                                          onChange={e => updatePAU(entry.oid, entry.lineIdx, e.target.value)}
+                                          className="h-6 text-xs text-right w-28 border border-neutral-200 rounded px-1.5 focus:border-[#D32F2F] focus:outline-none ml-auto block"
+                                        />
+                                      </td>
+                                      <td className="py-1.5 text-right font-medium tabular-nums whitespace-nowrap">
+                                        {formatCurrency(parseFloat(entry.montant) || 0)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 );
               })}
+
+              {/* Ligne total */}
               <TableRow className="border-t-2 border-neutral-300 bg-neutral-50">
+                <TableCell />
                 <TableCell className="font-bold text-sm">TOTAL</TableCell>
                 <TableCell className="text-right font-bold text-sm tabular-nums">{formatCurrency(totalDevis)}</TableCell>
                 <TableCell className="text-right font-bold text-sm tabular-nums">{formatCurrency(totalCE)}</TableCell>
@@ -1187,7 +1291,11 @@ function DebourseContreEtudeView({ devis, sections }) {
                 }`}>
                   {Math.abs(ecartTotal) > 0.01 ? `${ecartTotal > 0 ? '+' : ''}${formatCurrency(ecartTotal)}` : '—'}
                 </TableCell>
-                <TableCell className="text-right font-bold text-sm">100 %</TableCell>
+                <TableCell className={`text-right font-bold text-sm tabular-nums ${
+                  variationTotal < -0.01 ? 'text-emerald-600' : variationTotal > 0.01 ? 'text-red-500' : 'text-neutral-300'
+                }`}>
+                  {Math.abs(variationTotal) > 0.01 ? `${variationTotal > 0 ? '+' : ''}${variationTotal.toFixed(1)} %` : '—'}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -1229,8 +1337,8 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
       })
       .finally(() => setLoadingCommercial(false));
 
-    // Déboursé F11 (afc_etude_prix_detail)
-    ficheApi.getDevisById(fiche.code, devisInfo.vde_id)
+    // Déboursé généré depuis vte_doc_ligne (sans F11)
+    ficheApi.getDebours(fiche.code, devisInfo.vde_id)
       .then(r => setDevis(r.data))
       .catch(() => {})
       .finally(() => setLoadingDebourse(false));
@@ -1268,6 +1376,14 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
 
   // delta = déboursé F11 - CE → positif = gain
   const ecartDevis = totalDevis - totalCE;
+
+  const loadDebourse = useCallback(() => {
+    setLoadingDebourse(true);
+    ficheApi.getDebours(fiche.code, devisInfo.vde_id)
+      .then(r => setDevis(r.data))
+      .catch(() => {})
+      .finally(() => setLoadingDebourse(false));
+  }, [fiche.code, devisInfo.vde_id]);
 
   const handleSectionsChange = useCallback((setter) => {
     setSections(setter);
@@ -1323,11 +1439,11 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
           <TabsTrigger value="devis" className="px-4 py-2 flex items-center gap-2 text-sm">
             <FileText className="h-3.5 w-3.5" /> Devis
           </TabsTrigger>
+          <TabsTrigger value="debourse" className="px-4 py-2 flex items-center gap-2 text-sm">
+            <Lock className="h-3.5 w-3.5" /> Déboursé Devis
+          </TabsTrigger>
           <TabsTrigger value="contre-etude" className="px-4 py-2 flex items-center gap-2 text-sm">
             <Edit3 className="h-3.5 w-3.5" /> Contre-étude
-          </TabsTrigger>
-          <TabsTrigger value="debourse" className="px-4 py-2 flex items-center gap-2 text-sm">
-            <Lock className="h-3.5 w-3.5" /> Déboursé Optim
           </TabsTrigger>
           <TabsTrigger value="debourse-ce" className="px-4 py-2 flex items-center gap-2 text-sm">
             <TrendingDown className="h-3.5 w-3.5" /> Déboursé CE
@@ -1418,23 +1534,39 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
           )}
         </TabsContent>
 
-        {/* ── Onglet 3 : Déboursé Optim F11 (lecture seule) ── */}
+        {/* ── Onglet 2 : Déboursé Devis (généré depuis vte_doc_ligne) ── */}
         <TabsContent value="debourse">
           <Card className="border border-neutral-200 bg-neutral-50">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium flex items-center gap-2">
                 <Lock className="h-4 w-4 text-neutral-400" />
-                Déboursé Optim (F11)
+                Déboursé Devis
                 <Badge className="bg-neutral-200 text-neutral-600 font-medium text-xs ml-2">Lecture seule</Badge>
+                <Button
+                  size="sm" variant="outline"
+                  onClick={loadDebourse}
+                  disabled={loadingDebourse}
+                  className="ml-auto h-7 text-xs border-neutral-300 text-neutral-600 hover:text-neutral-900"
+                >
+                  {loadingDebourse
+                    ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Calcul…</>
+                    : <><RefreshCw className="h-3 w-3 mr-1" />Recalculer le déboursé</>}
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
               {loadingDebourse ? (
                 <div className="flex items-center justify-center py-10 gap-2 text-neutral-400 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
+                  <Loader2 className="h-4 w-4 animate-spin" /> Génération du déboursé…
                 </div>
               ) : (
-                <DevisGroupedView lignes={devis.lignes} total_ht={devis.total_ht} tva={devis.tva} total_ttc={devis.total_ttc} />
+                <DevisGroupedView
+                  lignes={(devis.lignes || []).filter(l => l.type_ligne === 1)}
+                  total_ht={devis.total_ht}
+                  tva={devis.tva}
+                  total_ttc={devis.total_ttc}
+                  simpleTotal
+                />
               )}
             </CardContent>
           </Card>
@@ -1453,7 +1585,7 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
               </CardContent>
             </Card>
           ) : (
-            <DebourseContreEtudeView devis={devis} sections={sections} />
+            <DebourseContreEtudeView devis={devis} sections={sections} onSectionsChange={handleSectionsChange} />
           )}
         </TabsContent>
       </Tabs>
