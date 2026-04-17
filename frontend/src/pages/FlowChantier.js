@@ -932,21 +932,25 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
       {groups.map((g) => {
         if (!g.ouvrage) return null;
         const oid           = g.ouvrage.id;
+        const isModified    = !!sections[oid];
         const sectionLignes = getSectionLignes(oid, g);
-        const revisedAmt    = sectionLignes.reduce((s, l) => s + (parseFloat(l.montant) || 0), 0);
         const originalAmt   = parseFloat(g.ouvrage.montant) || 0;
+        // Non modifié → montant CE = ouvrage.montant (agrégé Optim, jamais recalculé depuis les sous-éléments)
+        // Modifié     → montant CE = somme des lignes saisies par l'utilisateur
+        const revisedAmt    = isModified
+          ? sectionLignes.reduce((s, l) => s + (parseFloat(l.montant) || 0), 0)
+          : originalAmt;
         const delta         = originalAmt - revisedAmt; // positif = gain
         const isOpen        = open[oid] !== false;      // ouvert par défaut
-        const isModified    = !!sections[oid];
 
         return (
           <div key={oid} className="border border-neutral-200 rounded-lg overflow-hidden">
             {/* En-tête section cliquable */}
             <div
               className={`flex items-center gap-3 px-4 py-3 cursor-pointer select-none transition-colors ${
-                delta > 0.01  ? 'bg-emerald-50 hover:bg-emerald-100/60' :
-                delta < -0.01 ? 'bg-red-50 hover:bg-red-100/60' :
-                                'bg-neutral-100 hover:bg-neutral-200/60'
+                isModified && delta > 0.01  ? 'bg-emerald-50 hover:bg-emerald-100/60' :
+                isModified && delta < -0.01 ? 'bg-red-50 hover:bg-red-100/60' :
+                                              'bg-neutral-100 hover:bg-neutral-200/60'
               }`}
               onClick={() => toggleOpen(oid)}
             >
@@ -958,7 +962,7 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
               <div className="flex items-center gap-3 text-xs shrink-0 ml-2">
                 <span className="text-neutral-400 tabular-nums">{formatCurrency(originalAmt)} <span className="text-neutral-300">devis</span></span>
                 <span className="font-semibold tabular-nums">{formatCurrency(revisedAmt)} <span className="text-neutral-400 font-normal">CE</span></span>
-                {Math.abs(delta) > 0.01 && (
+                {isModified && Math.abs(delta) > 0.01 && (
                   <span className={`font-bold tabular-nums px-2 py-0.5 rounded text-[11px] ${
                     delta > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
                   }`}>
@@ -1081,15 +1085,22 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
 function DebourseContreEtudeView({ devis, sections }) {
   const groups = useMemo(() => groupF11ByOuvrage(devis.lignes), [devis.lignes]);
 
-  // Totaux CE par catégorie (utilise sections sauvées ou ressources Optim si non modifié)
+  // Totaux CE par catégorie
+  // Non modifié → contribue ouvrage.montant dans la catégorie de l'ouvrage (source Optim fiable)
+  // Modifié     → agrège les montants des lignes saisies par catégorie
   const ceTotals = useMemo(() => {
     const t = {};
     for (const g of groups) {
       if (!g.ouvrage) continue;
-      const lignes = sections[g.ouvrage.id]?.lignes ?? g.ressources;
-      for (const l of lignes) {
-        const cat = l.categorie || '';
-        t[cat] = (t[cat] || 0) + (parseFloat(l.montant) || 0);
+      const oid = g.ouvrage.id;
+      if (sections[oid]) {
+        for (const l of (sections[oid].lignes || [])) {
+          const cat = l.categorie || '';
+          t[cat] = (t[cat] || 0) + (parseFloat(l.montant) || 0);
+        }
+      } else {
+        const cat = g.ouvrage.categorie || '';
+        t[cat] = (t[cat] || 0) + (parseFloat(g.ouvrage.montant) || 0);
       }
     }
     return t;
@@ -1106,7 +1117,9 @@ function DebourseContreEtudeView({ devis, sections }) {
     return t;
   }, [devis.lignes]);
 
-  const totalDevis = devis.total_ht || 0;
+  // Les deux totaux sont calculés par agrégation de lignes (même source que ceTotals/devisTotals)
+  // → jamais via le champ d'en-tête (devis.total_ht) qui peut diverger du détail lignes
+  const totalDevis = Object.values(devisTotals).reduce((s, v) => s + v, 0);
   const totalCE    = Object.values(ceTotals).reduce((s, v) => s + v, 0);
   const ecartTotal = totalDevis - totalCE; // positif = gain
   const ecartPct   = totalDevis ? (ecartTotal / totalDevis * 100) : 0;
@@ -1230,14 +1243,31 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
     }
   }, [fiche, devisInfo.vde_id]);
 
-  // Total CE recalculé à chaque changement de sections
-  const totalCE = useMemo(() =>
-    Object.values(sections).reduce(
-      (sum, sec) => sum + (sec.lignes || []).reduce((s, l) => s + (parseFloat(l.montant) || 0), 0), 0
-    ), [sections]);
+  // Déboursé HT de référence : somme des ouvrage.montant via groupF11ByOuvrage
+  // Même source que totalCE → écart = 0 si rien n'est modifié
+  const totalDevis = useMemo(() => {
+    if (!devis.lignes?.length) return 0;
+    return groupF11ByOuvrage(devis.lignes).reduce((sum, g) => {
+      if (!g.ouvrage) return sum;
+      return sum + (parseFloat(g.ouvrage.montant) || 0);
+    }, 0);
+  }, [devis.lignes]);
+
+  // Total CE : non modifié → ouvrage.montant, modifié → somme des lignes saisies
+  const totalCE = useMemo(() => {
+    if (!devis.lignes?.length) return 0;
+    return groupF11ByOuvrage(devis.lignes).reduce((sum, g) => {
+      if (!g.ouvrage) return sum;
+      const sec = sections[g.ouvrage.id];
+      if (sec) {
+        return sum + (sec.lignes || []).reduce((s, l) => s + (parseFloat(l.montant) || 0), 0);
+      }
+      return sum + (parseFloat(g.ouvrage.montant) || 0);
+    }, 0);
+  }, [sections, devis.lignes]);
 
   // delta = déboursé F11 - CE → positif = gain
-  const ecartDevis = (devis.total_ht || 0) - totalCE;
+  const ecartDevis = totalDevis - totalCE;
 
   const handleSectionsChange = useCallback((setter) => {
     setSections(setter);
@@ -1345,7 +1375,7 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
               {/* Mini-résumé en haut */}
               <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-neutral-200 bg-white text-sm">
                 <div className="flex items-center gap-4">
-                  <span className="text-neutral-500">Déboursé HT : <span className="font-semibold text-neutral-800">{formatCurrency(devis.total_ht)}</span></span>
+                  <span className="text-neutral-500">Déboursé HT : <span className="font-semibold text-neutral-800">{formatCurrency(totalDevis)}</span></span>
                   <span className="text-neutral-300">|</span>
                   <span className="text-neutral-500">CE HT : <span className="font-semibold text-neutral-800">{formatCurrency(totalCE)}</span></span>
                 </div>
