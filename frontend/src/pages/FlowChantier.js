@@ -1158,6 +1158,21 @@ function DebourseContreEtudeView({ devis, sections, onSectionsChange }) {
     onSectionsChange(prev => ({ ...prev, [oid]: { lignes: updated } }));
   }, [sections, groupByOid, onSectionsChange]);
 
+  // Modification du montant CE → PAU = montant / quantité (équation inverse)
+  const updateMontant = useCallback((oid, lineIdx, newMontant) => {
+    const group = groupByOid[oid];
+    if (!group) return;
+    const src = sections[oid] ? sections[oid].lignes : group.ressources;
+    const updated = src.map((l, i) => {
+      if (i !== lineIdx) return l;
+      const montant = parseFloat(newMontant) || 0;
+      const qte     = parseFloat(l.quantite) || 0;
+      const pau     = qte !== 0 ? montant / qte : 0;
+      return { ...l, montant, prix_unitaire: pau };
+    });
+    onSectionsChange(prev => ({ ...prev, [oid]: { lignes: updated } }));
+  }, [sections, groupByOid, onSectionsChange]);
+
   const totalDevis = Object.values(devisTotals).reduce((s, v) => s + v, 0);
   const totalCE    = Object.values(ceTotals).reduce((s, v) => s + v, 0);
   const ecartTotal = totalDevis - totalCE;
@@ -1264,8 +1279,13 @@ function DebourseContreEtudeView({ devis, sections, onSectionsChange }) {
                                           className="h-6 text-xs text-right w-28 border border-neutral-200 rounded px-1.5 focus:border-[#D32F2F] focus:outline-none ml-auto block"
                                         />
                                       </td>
-                                      <td className="py-1.5 text-right font-medium tabular-nums whitespace-nowrap">
-                                        {formatCurrency(parseFloat(entry.montant) || 0)}
+                                      <td className="py-1.5 text-right" onClick={e => e.stopPropagation()}>
+                                        <input
+                                          type="number" step="0.01"
+                                          value={parseFloat(entry.montant) || 0}
+                                          onChange={e => updateMontant(entry.oid, entry.lineIdx, e.target.value)}
+                                          className="h-6 text-xs text-right w-28 border border-neutral-200 rounded px-1.5 focus:border-[#D32F2F] focus:outline-none ml-auto block font-medium"
+                                        />
                                       </td>
                                     </tr>
                                   ))}
