@@ -698,63 +698,61 @@ function buildDevisTree(lignes) {
 
 // ---------------------------------------------------------------------------
 // DevisCommercialView — vue fidèle au devis Optim (vte_doc_ligne)
-// Colonnes : N° | Code | Désignation | Un. | Qté | PAU | Coef Vte | P.U. HT | Total HT | Fixé
+// Colonnes : N° | Code | Désignation | Un. | Qté | PAU | Total HT | Fixé
 // Hiérarchie : titre (gras, fond sombre) → sous-titre (indenté) → detail (indenté ++)
 // ---------------------------------------------------------------------------
-function DevisCommercialView({ lignes, total_ht, tva, total_ttc }) {
+function DevisCommercialView({ lignes, total_ht }) {
   if (!lignes?.length) {
     return <p className="text-center py-8 text-neutral-500 text-sm">Aucune ligne de devis disponible.</p>;
   }
 
   const tree = buildDevisTree(lignes);
 
+  // Total PAU = somme du PAU des grands titres (type_ligne === 4)
+  // Chaque titre agrège déjà le PAU de toutes ses lignes dans Optim
+  const total_pau = lignes
+    .filter(l => l.type_ligne === 4)
+    .reduce((s, l) => s + (l.pau || 0), 0);
+
   const totauxJsx = (
     <div className="mt-6 flex justify-end">
       <div className="w-64 space-y-2 text-sm">
         <div className="flex justify-between py-2 border-b border-neutral-200">
-          <span className="text-neutral-600">Total HT</span>
-          <span className="font-bold">{formatCurrency(total_ht)}</span>
+          <span className="text-neutral-600">Total PAU</span>
+          <span className="tabular-nums">{formatCurrency(total_pau)}</span>
         </div>
         <div className="flex justify-between py-2 border-b border-neutral-200">
-          <span className="text-neutral-600">TVA</span>
-          <span>{formatCurrency(tva)}</span>
-        </div>
-        <div className="flex justify-between py-2">
-          <span className="font-bold">Total TTC</span>
-          <span className="font-bold text-lg">{formatCurrency(total_ttc)}</span>
+          <span className="font-bold">Total HT</span>
+          <span className="font-bold tabular-nums">{formatCurrency(total_ht)}</span>
         </div>
       </div>
     </div>
   );
 
   // Rendu récursif d'un nœud
-  // TypeLigne : 0=entête doc (racine ignorée), 1=detail/ressource, 2=sous-titre, 3=sous-titre variante, 4=titre majeur
+  // TypeLigne : 0=entête doc (transparent), 1=detail, 2/3=sous-titre, 4=titre majeur
+  // Indentation via node.niveau pour la colonne Désignation
   const renderNode = (node) => {
-    // Entête document (TypeLigne=0) : on descend directement dans ses enfants
     if (node.type_ligne === 0) {
       return <React.Fragment key={node.id}>{node.children.map(renderNode)}</React.Fragment>;
     }
 
     const isTitre     = node.type_ligne === 4;
     const isSousTitre = node.type_ligne === 2 || node.type_ligne === 3;
-    const isDetail    = node.type_ligne === 1 || (!isTitre && !isSousTitre);
-
-    const rowKey = node.id;
+    const indent      = Math.max(0, (node.niveau || 0) - 1) * 16; // px d'indentation
 
     if (isTitre) {
       return (
-        <React.Fragment key={rowKey}>
-          {/* Grand titre — fond sombre, gras */}
-          <TableRow className="bg-neutral-800">
-            <TableCell className="py-2.5 text-xs font-mono text-neutral-300 whitespace-nowrap">{node.numero_ligne}</TableCell>
-            <TableCell className="py-2.5 text-xs text-neutral-400">{node.code}</TableCell>
-            <TableCell colSpan={4} className="py-2.5 font-bold text-sm text-white">{node.designation}</TableCell>
-            <TableCell className="py-2.5 text-right text-xs text-neutral-300 tabular-nums">{node.pau ? formatCurrency(node.pau) : '—'}</TableCell>
-            <TableCell className="py-2.5 text-right text-xs text-neutral-300 tabular-nums">{node.coef_vente ? node.coef_vente.toFixed(3) : '—'}</TableCell>
-            <TableCell className="py-2.5 text-right text-xs text-neutral-300 tabular-nums">{node.prix_unitaire ? formatCurrency(node.prix_unitaire) : '—'}</TableCell>
-            <TableCell className="py-2.5 text-right font-bold text-sm text-white tabular-nums whitespace-nowrap">{formatCurrency(node.montant)}</TableCell>
-            <TableCell />
-          </TableRow>
+        <React.Fragment key={node.id}>
+          <tr className="bg-neutral-800 border-b border-neutral-700">
+            <td className="py-2.5 px-3 text-xs font-mono text-neutral-400 whitespace-nowrap">{node.numero_ligne}</td>
+            <td className="py-2.5 px-3 text-xs text-neutral-400 truncate">{node.code}</td>
+            <td className="py-2.5 font-bold text-sm text-white" style={{ paddingLeft: `${12 + indent}px` }}>{node.designation}</td>
+            <td /><td />
+            <td className="py-2.5 px-3 text-right text-xs text-neutral-300 tabular-nums whitespace-nowrap">{node.pau ? formatCurrency(node.pau) : ''}</td>
+            <td className="py-2.5 px-3 text-right font-bold text-sm text-white tabular-nums whitespace-nowrap">{formatCurrency(node.montant)}</td>
+            <td />
+          </tr>
           {node.children.map(renderNode)}
         </React.Fragment>
       );
@@ -762,66 +760,80 @@ function DevisCommercialView({ lignes, total_ht, tva, total_ttc }) {
 
     if (isSousTitre) {
       return (
-        <React.Fragment key={rowKey}>
-          {/* Sous-titre — fond gris clair, semi-gras, indenté */}
-          <TableRow className="bg-neutral-100">
-            <TableCell className="py-2 pl-6 text-xs font-mono text-neutral-400 whitespace-nowrap">{node.numero_ligne}</TableCell>
-            <TableCell className="py-2 text-xs text-neutral-400">{node.code}</TableCell>
-            <TableCell colSpan={4} className="py-2 pl-4 font-semibold text-sm text-neutral-700">{node.designation}</TableCell>
-            <TableCell className="py-2 text-right text-xs text-neutral-500 tabular-nums">{node.pau ? formatCurrency(node.pau) : '—'}</TableCell>
-            <TableCell className="py-2 text-right text-xs text-neutral-500 tabular-nums">{node.coef_vente ? node.coef_vente.toFixed(3) : '—'}</TableCell>
-            <TableCell className="py-2 text-right text-xs text-neutral-500 tabular-nums">{node.prix_unitaire ? formatCurrency(node.prix_unitaire) : '—'}</TableCell>
-            <TableCell className="py-2 text-right font-semibold text-sm text-neutral-700 tabular-nums whitespace-nowrap">{formatCurrency(node.montant)}</TableCell>
-            <TableCell />
-          </TableRow>
+        <React.Fragment key={node.id}>
+          <tr className="bg-neutral-100 border-b border-neutral-200">
+            <td className="py-2 px-3 text-xs font-mono text-neutral-400 whitespace-nowrap">{node.numero_ligne}</td>
+            <td className="py-2 px-3 text-xs text-neutral-400 truncate">{node.code}</td>
+            <td className="py-2 font-semibold text-sm text-neutral-700" style={{ paddingLeft: `${12 + indent}px` }}>{node.designation}</td>
+            <td /><td />
+            <td className="py-2 px-3 text-right text-xs text-neutral-500 tabular-nums whitespace-nowrap">{node.pau ? formatCurrency(node.pau) : ''}</td>
+            <td className="py-2 px-3 text-right font-semibold text-sm text-neutral-700 tabular-nums whitespace-nowrap">{formatCurrency(node.montant)}</td>
+            <td />
+          </tr>
           {node.children.map(renderNode)}
         </React.Fragment>
       );
     }
 
-    // Ligne de détail — toutes les colonnes
+    // Ligne de détail
     return (
-      <TableRow key={rowKey} className="hover:bg-neutral-50/60 border-neutral-100">
-        <TableCell className="py-1.5 pl-10 text-xs font-mono text-neutral-400 whitespace-nowrap">{node.numero_ligne}</TableCell>
-        <TableCell className="py-1.5 text-xs text-neutral-500">{node.code}</TableCell>
-        <TableCell className="py-1.5 pl-8 text-sm max-w-xs">
-          <div className="whitespace-pre-wrap break-words">{node.designation}</div>
-        </TableCell>
-        <TableCell className="py-1.5 text-sm text-neutral-500 text-center">{node.unite}</TableCell>
-        <TableCell className="py-1.5 text-sm text-right tabular-nums">{node.quantite || '—'}</TableCell>
-        <TableCell className="py-1.5 text-xs text-right tabular-nums text-neutral-500">{node.pau ? formatCurrency(node.pau) : '—'}</TableCell>
-        <TableCell className="py-1.5 text-xs text-right tabular-nums text-neutral-500">{node.coef_vente ? node.coef_vente.toFixed(3) : '—'}</TableCell>
-        <TableCell className="py-1.5 text-sm text-right tabular-nums">{node.prix_unitaire ? formatCurrency(node.prix_unitaire) : '—'}</TableCell>
-        <TableCell className="py-1.5 text-sm text-right font-medium tabular-nums whitespace-nowrap">{formatCurrency(node.montant)}</TableCell>
-        <TableCell className="py-1.5 text-center">
-          {node.is_fixe && <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded border border-amber-200">Fixé</span>}
-        </TableCell>
-      </TableRow>
+      <tr key={node.id} className="border-b border-neutral-100 hover:bg-neutral-50">
+        <td className="py-1.5 px-3 text-xs font-mono text-neutral-400 whitespace-nowrap">{node.numero_ligne}</td>
+        <td className="py-1.5 px-3 text-xs text-neutral-500 truncate" title={node.code}>{node.code}</td>
+        <td className="py-1.5 text-sm text-neutral-800" style={{ paddingLeft: `${12 + indent}px` }}>{node.designation}</td>
+        <td className="py-1.5 px-3 text-xs text-neutral-500 text-center whitespace-nowrap">{node.unite || '—'}</td>
+        <td className="py-1.5 px-3 text-xs text-right tabular-nums text-neutral-600 whitespace-nowrap">
+          {node.quantite != null && node.quantite !== 0 ? node.quantite : '—'}
+        </td>
+        <td className="py-1.5 px-3 text-xs text-right tabular-nums text-neutral-500 whitespace-nowrap">
+          {node.pau ? formatCurrency(node.pau) : '—'}
+        </td>
+        <td className="py-1.5 px-3 text-sm text-right font-medium tabular-nums text-neutral-800 whitespace-nowrap">
+          {formatCurrency(node.montant)}
+        </td>
+        <td className="py-1.5 px-3 text-center">
+          {node.is_fixe && <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded border border-amber-200">F</span>}
+        </td>
+      </tr>
     );
   };
 
   return (
     <>
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-neutral-100">
-              <TH>N°</TH>
-              <TH>Code</TH>
-              <TH>Désignation</TH>
-              <TH>Un.</TH>
-              <TH right>Qté</TH>
-              <TH right>PAU</TH>
-              <TH right>Coef Vte</TH>
-              <TH right>P.U. HT</TH>
-              <TH right>Total HT</TH>
-              <TH>Fixé</TH>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <div className="overflow-x-auto rounded border border-neutral-200">
+        <table className="w-full text-sm border-collapse">
+          <colgroup>
+            <col style={{ width: '56px' }} />   {/* N° */}
+            <col style={{ width: '112px' }} />  {/* Code */}
+            <col />                              {/* Désignation — prend le reste */}
+            <col style={{ width: '48px' }} />   {/* Un. */}
+            <col style={{ width: '64px' }} />   {/* Qté */}
+            <col style={{ width: '112px' }} />  {/* PAU */}
+            <col style={{ width: '112px' }} />  {/* Total HT */}
+            <col style={{ width: '48px' }} />   {/* Fixé */}
+          </colgroup>
+          <thead>
+            <tr className="bg-neutral-100 border-b border-neutral-200">
+              {[
+                { label: 'N°',         cls: 'pl-3 text-left' },
+                { label: 'Code',       cls: 'pl-3 text-left' },
+                { label: 'Désignation',cls: 'pl-3 text-left' },
+                { label: 'Un.',        cls: 'text-center' },
+                { label: 'Qté',        cls: 'pr-3 text-right' },
+                { label: 'PAU',        cls: 'pr-3 text-right' },
+                { label: 'Total HT',   cls: 'pr-3 text-right' },
+                { label: 'Fixé',       cls: 'text-center' },
+              ].map(({ label, cls }) => (
+                <th key={label} className={`py-2.5 text-[11px] font-semibold uppercase tracking-widest text-neutral-500 ${cls}`}>
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
             {tree.map(renderNode)}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
       {totauxJsx}
     </>
@@ -1282,8 +1294,6 @@ function DevisDetail({ fiche, devisInfo, onClose }) {
                 <DevisCommercialView
                   lignes={devisCommercial.lignes}
                   total_ht={devisCommercial.total_ht}
-                  tva={devisCommercial.tva}
-                  total_ttc={devisCommercial.total_ttc}
                 />
               )}
             </CardContent>
