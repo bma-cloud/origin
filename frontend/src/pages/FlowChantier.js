@@ -10,7 +10,7 @@ import {
   Users, FileText, Plus, Trash2, Lock, Edit3,
   TrendingUp, TrendingDown,
   AlertTriangle, Settings, Truck, Paperclip, Image, ClipboardList, Camera,
-  Download, Droplet, Waves, Building, Layers, Package,
+  Download, Droplet, Waves, Building, Layers, Package, GripVertical,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -869,6 +869,8 @@ function groupF11ByOuvrage(lignes) {
 function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
   const groups = useMemo(() => groupF11ByOuvrage(devis.lignes), [devis.lignes]);
   const [open, setOpen] = useState({});       // { [ouvrageId]: bool }
+  const [dragOver, setDragOver] = useState(null); // { oid, idx } ligne survolée
+  const dragSrc = useRef(null); // { oid, idx } ligne en cours de drag
 
   // Pour un ouvrage donné, renvoie les lignes CE ou, à défaut, les ressources Optim d'origine
   const getSectionLignes = useCallback((ouvrageId, group) => {
@@ -908,6 +910,14 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
       delete next[ouvrageId];
       return next;
     });
+  };
+
+  const reorderLignes = (ouvrageId, group, fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const current = [...getSectionLignes(ouvrageId, group)];
+    const [moved] = current.splice(fromIdx, 1);
+    current.splice(toIdx, 0, moved);
+    onSectionsChange(prev => ({ ...prev, [ouvrageId]: { lignes: current } }));
   };
 
   const toggleOpen = (oid) => setOpen(prev => ({ ...prev, [oid]: !(prev[oid] !== false) }));
@@ -965,6 +975,7 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
                   <Table>
                     <TableHeader>
                       <TableRow className="border-neutral-100">
+                        <TableHead className="w-6" />
                         <THCompact>Désignation</THCompact>
                         <THCompact>Unité</THCompact>
                         <THCompact right>Qté</THCompact>
@@ -978,10 +989,32 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
                     <TableBody>
                       {sectionLignes.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-4 text-neutral-400 text-xs">Aucune ligne</TableCell>
+                          <TableCell colSpan={9} className="text-center py-4 text-neutral-400 text-xs">Aucune ligne</TableCell>
                         </TableRow>
-                      ) : sectionLignes.map((l, li) => (
-                        <TableRow key={l.id || li} className="border-neutral-50 hover:bg-neutral-50/50">
+                      ) : sectionLignes.map((l, li) => {
+                        const isDragTarget = dragOver?.oid === oid && dragOver?.idx === li;
+                        return (
+                          <TableRow
+                            key={l.id || li}
+                            draggable
+                            onDragStart={() => { dragSrc.current = { oid, idx: li }; }}
+                            onDragOver={e => { e.preventDefault(); setDragOver({ oid, idx: li }); }}
+                            onDragLeave={() => setDragOver(null)}
+                            onDrop={() => {
+                              setDragOver(null);
+                              if (dragSrc.current?.oid === oid) {
+                                reorderLignes(oid, g, dragSrc.current.idx, li);
+                              }
+                              dragSrc.current = null;
+                            }}
+                            onDragEnd={() => { dragSrc.current = null; setDragOver(null); }}
+                            className={`border-neutral-50 transition-colors ${
+                              isDragTarget ? 'border-t-2 border-t-[#D32F2F] bg-red-50/30' : 'hover:bg-neutral-50/50'
+                            }`}
+                          >
+                          <TableCell className="py-1 px-1 w-6">
+                            <GripVertical size={13} className="text-neutral-300 cursor-grab active:cursor-grabbing" />
+                          </TableCell>
                           <TableCell className="py-1">
                             <Input value={l.designation || ''} onChange={e => updateLigne(oid, g, li, 'designation', e.target.value)}
                               className="h-7 text-xs border-neutral-200 focus:border-[#D32F2F]" />
@@ -1016,7 +1049,8 @@ function ContreEtudeStructuree({ devis, sections, onSectionsChange }) {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
