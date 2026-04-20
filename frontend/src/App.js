@@ -2,12 +2,14 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Domaines from './pages/Domaines';
 import Outils from './pages/Outils';
 import OutilPage from './pages/OutilPage';
+import FlowChantier from './pages/FlowChantier';
+import FicheChefDeFile from './pages/FicheChefDeFile';
+import Fiches from './pages/Fiches';
 import AuditLogs from './pages/AuditLogs';
 import Profile from './pages/Profile';
 import { Toaster } from './components/ui/sonner';
@@ -18,8 +20,8 @@ function ProtectedRoute({ children, roles }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="w-10 h-10 border-2 border-[#FF3B30]/30 border-t-[#FF3B30] rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
+        <div className="w-10 h-10 border-2 border-[#D32F2F]/20 border-t-[#D32F2F] rounded-full animate-spin" />
       </div>
     );
   }
@@ -35,13 +37,36 @@ function ProtectedRoute({ children, roles }) {
   return <Layout>{children}</Layout>;
 }
 
+// Route protégée SANS Layout (pour les outils en plein écran)
+function ProtectedRouteFullscreen({ children, roles }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
+        <div className="w-10 h-10 border-2 border-[#D32F2F]/20 border-t-[#D32F2F] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (roles && !roles.includes(user.role_global)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="w-10 h-10 border-2 border-[#FF3B30]/30 border-t-[#FF3B30] rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
+        <div className="w-10 h-10 border-2 border-[#D32F2F]/20 border-t-[#D32F2F] rounded-full animate-spin" />
       </div>
     );
   }
@@ -65,15 +90,6 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <Register />
-          </PublicRoute>
-        }
-      />
-
       {/* Protected routes */}
       <Route
         path="/dashboard"
@@ -116,6 +132,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/outils/:outilId/flowchantier"
+        element={
+          <ProtectedRouteFullscreen>
+            <FlowChantier />
+          </ProtectedRouteFullscreen>
+        }
+      />
+      <Route
         path="/audit-logs"
         element={
           <ProtectedRoute roles={['direction']}>
@@ -128,6 +152,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fiches"
+        element={
+          <ProtectedRoute>
+            <Fiches />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fiches/:code"
+        element={
+          <ProtectedRoute>
+            <FicheChefDeFile />
           </ProtectedRoute>
         }
       />

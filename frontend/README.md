@@ -1,70 +1,115 @@
-# Getting Started with Create React App
+# ITS Origin — Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Interface React de la plateforme ITS Origin (React + TailwindCSS + shadcn/ui).
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Lancement
 
-### `npm start`
+```bash
+cd "C:\Users\ia\Desktop\ORIGIN ITS\origin\frontend"
+npm start
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Application disponible sur : http://localhost:3000
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+> Le backend doit être démarré sur le port 8001 avant de lancer le frontend.
 
-### `npm test`
+---
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Installation (première fois)
 
-### `npm run build`
+```bash
+cd "C:\Users\ia\Desktop\ORIGIN ITS\origin\frontend"
+npm install
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Scripts disponibles
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+| Commande | Description |
+|----------|-------------|
+| `npm start` | Lance en mode développement (port 3000, hot reload) |
+| `npm run build` | Compile pour la production dans `/build` |
 
-### `npm run eject`
+---
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Structure des fichiers
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```
+frontend/src/
+├── App.js                      # Routeur principal (React Router)
+├── index.js                    # Point d'entrée React
+├── index.css                   # Variables CSS globales (couleurs ITS, thème clair)
+│
+├── pages/
+│   ├── Login.js                # Page de connexion
+│   ├── Dashboard.js            # Tableau de bord (KPIs, activité récente)
+│   ├── FlowChantier.js         # Outil fiches chantier (liste → fiche → étape)
+│   ├── Outils.js               # Liste des outils métier
+│   ├── OutilPage.js            # Détail d'un outil + accès
+│   ├── FicheChefDeFile.js      # Gestion fiches chef de file
+│   ├── Fiches.js               # Vue fiches
+│   ├── Users.js                # Gestion des utilisateurs (direction)
+│   ├── Domaines.js             # Gestion des domaines (direction)
+│   ├── AuditLogs.js            # Logs d'audit
+│   ├── Profile.js              # Profil utilisateur
+│   ├── Register.js             # Inscription
+│   └── OutilPage.js            # Page d'un outil avec redirection vers l'outil
+│
+├── components/
+│   ├── Layout.js               # Sidebar + structure de page
+│   ├── AiAssistant.js          # Assistant IA intégré
+│   └── ui/                     # Composants shadcn/ui (Button, Card, Badge...)
+│
+├── contexts/
+│   └── AuthContext.js          # Context auth (user, token, rôles)
+│
+└── lib/
+    ├── api.js                  # Appels API (axios, endpoints)
+    └── utils.js                # Utilitaires (cn, formatDate...)
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+---
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Couleurs ITS (thème clair)
 
-## Learn More
+| Variable | Valeur | Usage |
+|----------|--------|-------|
+| `--color-primary` | `#D32F2F` | Rouge ITS — boutons, accents |
+| `--color-bg` | `#f4f4f5` | Fond général |
+| `--color-surface` | `#ffffff` | Cartes, panels |
+| `--color-text` | `#09090b` | Texte principal |
+| `--color-text-secondary` | `#71717a` | Texte secondaire |
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Navigation FlowChantier
 
-### Code Splitting
+L'outil principal fonctionne en 3 niveaux de vue :
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```
+Liste des marchés
+    └── Fiche d'un marché (équipe, infos, 13 étapes)
+            └── Détail d'une étape (statut, notes, fil d'Ariane)
+```
 
-### Analyzing the Bundle Size
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Proxy API
 
-### Making a Progressive Web App
+Les appels API sont proxifiés vers `http://localhost:8001` via la config dans [package.json](package.json) :
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```json
+"proxy": "http://localhost:8001"
+```
 
-### Advanced Configuration
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## Si le port 3000 est déjà occupé
 
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+```powershell
+# Via PowerShell (le plus fiable)
+Stop-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess -Force
+```

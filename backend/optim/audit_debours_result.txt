@@ -1,0 +1,136 @@
+
+======================================================================
+  1a — Types de lignes dans vte_doc_ligne (déboursé commercial)
+======================================================================
+  TypeLigne=1  →  223958 lignes
+  TypeLigne=2  →  41579 lignes
+  TypeLigne=4  →  19150 lignes
+  TypeLigne=3  →  15749 lignes
+  TypeLigne=0  →  6737 lignes
+  TypeLigne=5  →  2700 lignes
+  TypeLigne=9  →  867 lignes
+
+======================================================================
+  1b — Types de lignes dans afc_etude_prix_detail (F11)
+======================================================================
+  TypeLigne=1  →  29833 lignes
+  TypeLigne=2  →  8995 lignes
+  TypeLigne=4  →  4035 lignes
+  TypeLigne=3  →  1577 lignes
+
+======================================================================
+  1c — Récupérer un VDE_ID réel pour les tests
+======================================================================
+  VDE_ID=6218  ref=D25ITR--00399.00  ht=8199.2  →  Sondage et assistance technique -  DALLAGE CBMAN 
+  VDE_ID=7350  ref=D26ITSA01-02191.00  ht=75500.0  →  PROJET NAOW - GARE SNCF A NANTES (44) - REALISATION D'UN REV
+  VDE_ID=3684  ref=D24ITR-00141.00  ht=4927.4  →  Campagne de sondage sur balcons et poutres 
+  VDE_ID=6602  ref=D25ITSA01-02036.00  ht=19285.39  →  BATIMENT D - RESIDENCE PARENTHESE A ANGERS (49) - TRAVAUX DE
+  VDE_ID=6686  ref=D25ITSA01-02038.00  ht=27120.92  →  BATIMENTC - RESIDENCE PARENTHESE A ANGERS (49) - TRAVAUX DE 
+
+  → VDE_ID retenu pour les analyses : 6218
+
+======================================================================
+  1d — Lignes vte_doc_ligne pour VDE_ID=6218
+======================================================================
+  Total : 15 lignes
+
+  Type  Niv           PAU            MtHT  Fixe  Libellé
+  ----  ---           ---            ----  ----  -------
+     0    0       5704.00         8199.20     0  Sondage et assistance technique -  DALLAGE CBMAN 
+     1    1          0.00            0.00     0    Acompte de 30% à la commande pour validation et po
+     2    1        600.00          720.00     0    Installation de chantier comprenant :
+
+Amenée et
+     1    2        600.00          720.00     0      déplacement 
+     2    1        688.00         1376.00     0    Immobilisation Ingénieur pour le relevé des géomét
+     1    2         86.00         1376.00     0      MO itr 
+     2    1       1200.00         1680.00     0    Sondages destructifs comprenant :
+
+Purge du béto
+     1    2       1200.00         1680.00     0      mo mc carottage 
+     2    1       1152.00         1740.00     0    Tests en laboratoire pour la détermination des car
+     1    2        404.00         1292.80     0      tests 
+     1    2         86.00          447.20     0      itr
+     2    1       2064.00         2683.20     0    Réalisation d'une étude de faisabilité, comprenant
+     1    2         86.00         2683.20     0      mo itr 
+     1    1          0.00            0.00     0    
+     1    1          0.00            0.00     0    Restant à votre charge: 
+
+- Communication avec l
+
+
+======================================================================
+  1e — Résumé par TypeLigne pour VDE_ID=6218 (PAU et MtHT)
+======================================================================
+  TypeLigne= 0  n=   1  Σ(PAU)=       5704.00  Σ(MtHT)=       8199.20
+  TypeLigne= 1  n=   9  Σ(PAU)=       2462.00  Σ(MtHT)=       8199.20
+  TypeLigne= 2  n=   5  Σ(PAU)=       5704.00  Σ(MtHT)=       8199.20
+
+======================================================================
+  1f — Lignes afc_etude_prix_detail (F11) pour VDE_ID=6218
+======================================================================
+  Total : 14 lignes
+
+  Type  Niv           PAU             PAT               Famille  Libellé
+  ----  ---           ---             ---               -------  -------
+     4    1     5704.0000         5704.00                          Sondage et assistance technique -  DALLAGE CBMAN 
+     1    2        0.0000            0.00                            Acompte de 30% à la commande pour validation et po
+     2    2      600.0000          600.00                            Installation de chantier comprenant :  Amenée et r
+     1    3      600.0000          600.00        Sous-Traitance        déplacement 
+     2    2      688.0000          688.00                            Immobilisation Ingénieur pour le relevé des géomét
+     1    3       86.0000          688.00         Main d'Oeuvre        MO itr 
+     2    2     1200.0000         1200.00                            Sondages destructifs comprenant :  Purge du béton 
+     1    3     1200.0000         1200.00        Sous-Traitance        mo mc carottage 
+     2    2     1152.0000         1152.00                            Tests en laboratoire pour la détermination des car
+     1    3      404.0000          808.00        Sous-Traitance        tests 
+     1    3       86.0000          344.00         Main d'Oeuvre        itr
+     2    2     2064.0000         2064.00                            Réalisation d'une étude de faisabilité, comprenant
+     1    3       86.0000         2064.00         Main d'Oeuvre        mo itr 
+     1    2        0.0000            0.00                            Restant à votre charge:   - Communication avec le 
+
+
+======================================================================
+  1g — Résumé F11 par TypeLigne pour VDE_ID=6218
+======================================================================
+  TypeLigne= 1  n=   8  Σ(PAT)=       5704.00
+  TypeLigne= 2  n=   5  Σ(PAT)=       5704.00
+  TypeLigne= 4  n=   1  Σ(PAT)=       5704.00
+
+======================================================================
+  1h — Tables OPTIM contenant 'debours' / 'cout' / 'ressource'
+======================================================================
+  afc_etude
+  afc_etude_exec_charge
+  afc_etude_exec_detail
+  afc_etude_lien
+  afc_etude_prix_detail
+  bib_ressource_lien_deplacement
+  svh_suivi_cout_mo
+  svh_suivi_cout_mo_ecart
+  svh_suivi_cout_mo_periode
+  s_ressource
+  vedt_etude_avancement
+  vedt_etude_avancement_cumulfamille
+  vedt_etude_avancement_cumulphase
+  vedt_etude_avancement_cumulphasefamille
+  vedt_etude_avancement_cumulphasetype
+  vedt_etude_avancement_cumultotal
+  vedt_etude_exec
+  vedt_etude_exec_avec_phase
+  vedt_etude_exec_cumulphasetype
+  vedt_etude_exec_detail_ligne
+  vedt_etude_planning
+  vedt_etude_prix
+  vedt_etude_prix_cumultype
+  vedt_etude_rad
+  vedt_etude_rad_detail
+
+======================================================================
+  1i — Rapprochement VDL_PAU (devis) vs ETP_PAU (F11) pour VDE_ID=6218
+======================================================================
+  vte_doc_ligne type=1 : 9 lignes
+    Σ(PAU×Qté)          = 5704.00
+    Σ(MtHT)             = 8199.20
+  afc_etude_prix_detail type=1 : 8 lignes
+    Σ(PAT)              = 5704.00
+  VDE_MtHTNet (total vente HT)    = 8199.20

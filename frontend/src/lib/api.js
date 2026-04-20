@@ -30,6 +30,10 @@ api.interceptors.response.use(
 
 // Helper to format API errors
 export function formatApiError(error) {
+  if (!error.response) {
+    // Network error — backend unreachable
+    return 'Impossible de joindre le serveur. Vérifiez votre connexion ou réessayez.';
+  }
   const detail = error.response?.data?.detail;
   if (detail == null) return 'Une erreur est survenue. Veuillez réessayer.';
   if (typeof detail === 'string') return detail;
@@ -88,6 +92,24 @@ export const aiApi = {
   chat: (message, sessionId) => api.post('/ai/chat', { message, session_id: sessionId }),
   getHistory: (sessionId) => api.get(`/ai/history${sessionId ? `?session_id=${sessionId}` : ''}`),
   clearHistory: () => api.delete('/ai/history')
+};
+
+// Fiche Chef de File API
+export const ficheApi = {
+  get: (code) => api.get(`/fiches/${code}`),
+  updateCf: (code, data) => api.patch(`/fiches/${code}/cf`, data),
+  updateEtape: (code, numero, statut) => api.patch(`/fiches/${code}/etapes/${numero}`, { statut }),
+  updatePlanification: (code, data) => api.put(`/fiches/${code}/planification`, data),
+  updateContreEtude: (code, data) => api.put(`/fiches/${code}/contre-etude`, data),
+  updateFichePrepa: (code, data) => api.put(`/fiches/${code}/fiche-prepa`, data),
+  updateChecklistChantier: (code, data) => api.put(`/fiches/${code}/checklist-chantier`, data),
+  getConducteurs: () => api.get('/fiches/referentiels/conducteurs'),
+  getChefsDeFile: () => api.get('/fiches/referentiels/chefs-de-file'),
+  getDevis: (code) => api.get(`/fiches/${code}/devis`),
+  getDevisList: (code) => api.get(`/fiches/${code}/devis-list`),
+  getDevisById: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}`),
+  getDevisCommercial: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}/commercial`),
+  getDebours: (code, vdeId) => api.get(`/fiches/${code}/devis/${vdeId}/debours-devis`),
 };
 
 export default api;

@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+import asyncio
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 import os
@@ -14,13 +15,16 @@ from uuid import uuid4
 from database import (
     init_indexes, users_col, domaines_col, outils_col,
     user_domaines_col, user_outils_col, audit_logs_col,
-    documents_col, chat_messages_col
+    documents_col, chat_messages_col, chantiers_col, conducteurs_col,
+    fiche_chantiers_col
 )
 from auth import (
     hash_password, verify_password, create_access_token, create_refresh_token,
     get_current_user, require_direction, require_encadrant_or_direction
 )
 from audit import log_action
+from optim.router import optim_router, _sync_task
+from fiche_chef_de_file.router import fiche_router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -349,7 +353,8 @@ async def get_outils(current_user: dict = Depends(get_current_user)):
             "id": o["id"], "nom": o["nom"], "domaine_id": o["domaine_id"],
             "domaine_nom": d["nom"] if d else None,
             "roles_disponibles": o.get("roles_disponibles", []),
-            "created_at": o["created_at"]
+            "created_at": o["created_at"],
+            "type": o.get("type"),
         })
     return result
 
@@ -506,10 +511,31 @@ async def get_audit_logs(limit: int = 100, current_user: dict = Depends(require_
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    users_count = await users_col.count_documents({})
-    domaines_count = await domaines_col.count_documents({})
-    outils_count = await outils_col.count_documents({})
-    documents_count = await documents_col.count_documents({})
+    users_count, domaines_count, outils_count, documents_count = await asyncio.gather(
+        users_col.count_documents({}),
+        domaines_col.count_documents({}),
+        outils_col.count_documents({}),
+        documents_col.count_documents({}),
+    )
+
+    # Chantier stats depuis fiche_chantiers
+    total_chantiers, sans_cf = await asyncio.gather(
+        fiche_chantiers_col.count_documents({}),
+        fiche_chantiers_col.count_documents({"cf.nom_complet": ""}),
+    )
+
+    # Étapes en cours et terminées
+    etapes_pipeline = [
+        {"$unwind": "$etapes"},
+        {"$group": {
+            "_id": "$etapes.statut",
+            "count": {"$sum": 1}
+        }}
+    ]
+    etapes_stats = {doc["_id"]: doc["count"]
+                    async for doc in fiche_chantiers_col.aggregate(etapes_pipeline)}
+    etapes_en_cours = etapes_stats.get("en_cours", 0)
+    etapes_terminees = etapes_stats.get("termine", 0)
 
     logs = await audit_logs_col.find({}, NO_ID).sort("timestamp", -1).limit(5).to_list(5)
     recent = []
@@ -524,6 +550,10 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     return {
         "total_users": users_count, "total_domaines": domaines_count,
         "total_outils": outils_count, "total_documents": documents_count,
+        "total_chantiers": total_chantiers,
+        "chantiers_sans_cf": sans_cf,
+        "etapes_en_cours": etapes_en_cours,
+        "etapes_terminees": etapes_terminees,
         "recent_activity": recent
     }
 
@@ -645,8 +675,328 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
+# ============== FLOWCHANTIER - CHANTIERS ROUTES ==============
+
+@api_router.get("/flowchantier/chantiers")
+async def get_chantiers(current_user: dict = Depends(get_current_user)):
+    chantiers = await chantiers_col.find({}, NO_ID).sort("updated_at", -1).to_list(500)
+    return chantiers
+
+@api_router.get("/flowchantier/chantiers/{chantier_id}")
+async def get_chantier(chantier_id: str, current_user: dict = Depends(get_current_user)):
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    return chantier
+
+@api_router.post("/flowchantier/chantiers")
+async def create_chantier(request: Request, current_user: dict = Depends(get_current_user)):
+    body = await request.json()
+    
+    # Generate unique reference
+    count = await chantiers_col.count_documents({})
+    reference = f"CH-{datetime.now().strftime('%Y%m')}-{str(count + 1).zfill(4)}"
+    
+    now = datetime.now(timezone.utc).isoformat()
+    chantier = {
+        "id": str(uuid4()),
+        "reference": reference,
+        "nom": body.get("nom", "").strip(),
+        "client": body.get("client", "").strip(),
+        "adresse": body.get("adresse", "").strip(),
+        "description": body.get("description", ""),
+        "current_step": 0,  # 0 = non assigné, 1-4 = étapes
+        "steps_status": {
+            "1": {"status": "pending", "validated_at": None, "skipped": False},
+            "2": {"status": "pending", "validated_at": None, "skipped": False},
+            "3": {"status": "pending", "validated_at": None, "skipped": False},
+            "4": {"status": "pending", "validated_at": None, "skipped": False}
+        },
+        # Étape 2 - Planification
+        "conducteur_id": None,
+        "chef_de_file_id": None,
+        "dossier": {
+            "acompte_recu": False,
+            "os_signe": False,
+            "contrat_signe": False
+        },
+        # Étape 3 - Devis / Contre-étude
+        "devis": {
+            "montant_ht": 0,
+            "tva": 20,
+            "montant_ttc": 0,
+            "date_devis": None,
+            "validite": None
+        },
+        "contre_etude": {
+            "montant_estime": 0,
+            "commentaires": ""
+        },
+        # Étape 4 - Préparation
+        "logistique": [],
+        "risques_ppsps": [],
+        "moyens": [],
+        "planning": [],
+        "blocages": [],
+        # Équipe
+        "equipe": [],
+        # Historique
+        "historique": [],
+        # Metadata
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user["id"]
+    }
+    
+    if not chantier["nom"]:
+        raise HTTPException(status_code=400, detail="Le nom du chantier est requis")
+    
+    await chantiers_col.insert_one(chantier)
+    await log_action("create_chantier", "chantier", chantier["id"], current_user["id"],
+                     {"reference": reference, "nom": chantier["nom"]}, request.client.host if request.client else None)
+    
+    # Return chantier without MongoDB _id field
+    created_chantier = await chantiers_col.find_one({"id": chantier["id"]}, NO_ID)
+    return created_chantier
+
+@api_router.put("/flowchantier/chantiers/{chantier_id}")
+async def update_chantier(chantier_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    
+    body = await request.json()
+    update = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    # Allowed fields to update
+    allowed_fields = [
+        "nom", "client", "adresse", "description", "conducteur_id", "chef_de_file_id",
+        "dossier", "devis", "contre_etude", "logistique", "risques_ppsps",
+        "moyens", "planning", "blocages", "equipe"
+    ]
+    
+    for field in allowed_fields:
+        if field in body:
+            update[field] = body[field]
+    
+    await chantiers_col.update_one({"id": chantier_id}, {"$set": update})
+    await log_action("update_chantier", "chantier", chantier_id, current_user["id"],
+                     {"fields": list(update.keys())}, request.client.host if request.client else None)
+    
+    updated = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    return updated
+
+@api_router.delete("/flowchantier/chantiers/{chantier_id}")
+async def delete_chantier(chantier_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    
+    await chantiers_col.delete_one({"id": chantier_id})
+    await log_action("delete_chantier", "chantier", chantier_id, current_user["id"],
+                     {"reference": chantier["reference"]}, request.client.host if request.client else None)
+    
+    return {"message": "Chantier supprimé"}
+
+@api_router.post("/flowchantier/chantiers/{chantier_id}/start")
+async def start_chantier(chantier_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    """Démarrer le workflow d'un chantier (passer à l'étape 1)"""
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    
+    if chantier["current_step"] != 0:
+        raise HTTPException(status_code=400, detail="Le chantier est déjà en cours")
+    
+    # Vérifier qu'un conducteur ou chef de file est assigné
+    if not chantier.get("conducteur_id") and not chantier.get("chef_de_file_id"):
+        raise HTTPException(status_code=400, detail="Un conducteur ou chef de file doit être assigné")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "current_step": 1,
+        "updated_at": now,
+        "historique": chantier.get("historique", []) + [{
+            "action": "Démarrage du workflow",
+            "step": 1,
+            "user_id": current_user["id"],
+            "user_nom": f"{current_user['prenom']} {current_user['nom']}",
+            "timestamp": now
+        }]
+    }
+    
+    await chantiers_col.update_one({"id": chantier_id}, {"$set": update})
+    await log_action("start_chantier", "chantier", chantier_id, current_user["id"],
+                     {"reference": chantier["reference"]}, request.client.host if request.client else None)
+    
+    updated = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    return updated
+
+@api_router.post("/flowchantier/chantiers/{chantier_id}/validate-step")
+async def validate_step(chantier_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    """Valider l'étape actuelle et passer à la suivante"""
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    
+    current_step = chantier["current_step"]
+    if current_step == 0:
+        raise HTTPException(status_code=400, detail="Le chantier n'a pas encore démarré")
+    if current_step > 4:
+        raise HTTPException(status_code=400, detail="Toutes les étapes sont terminées")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    steps_status = chantier["steps_status"]
+    steps_status[str(current_step)] = {
+        "status": "validated",
+        "validated_at": now,
+        "skipped": False
+    }
+    
+    new_step = current_step + 1 if current_step < 4 else 5  # 5 = terminé
+    
+    update = {
+        "current_step": new_step,
+        "steps_status": steps_status,
+        "updated_at": now,
+        "historique": chantier.get("historique", []) + [{
+            "action": f"Validation étape {current_step}",
+            "step": current_step,
+            "user_id": current_user["id"],
+            "user_nom": f"{current_user['prenom']} {current_user['nom']}",
+            "timestamp": now
+        }]
+    }
+    
+    await chantiers_col.update_one({"id": chantier_id}, {"$set": update})
+    updated = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    return updated
+
+@api_router.post("/flowchantier/chantiers/{chantier_id}/skip-step")
+async def skip_step(chantier_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    """Sauter l'étape actuelle (marquée comme sautée en rouge)"""
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    
+    current_step = chantier["current_step"]
+    if current_step == 0:
+        raise HTTPException(status_code=400, detail="Le chantier n'a pas encore démarré")
+    if current_step > 4:
+        raise HTTPException(status_code=400, detail="Toutes les étapes sont terminées")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    steps_status = chantier["steps_status"]
+    steps_status[str(current_step)] = {
+        "status": "skipped",
+        "validated_at": None,
+        "skipped": True
+    }
+    
+    new_step = current_step + 1 if current_step < 4 else 5
+    
+    update = {
+        "current_step": new_step,
+        "steps_status": steps_status,
+        "updated_at": now,
+        "historique": chantier.get("historique", []) + [{
+            "action": f"Étape {current_step} sautée",
+            "step": current_step,
+            "user_id": current_user["id"],
+            "user_nom": f"{current_user['prenom']} {current_user['nom']}",
+            "timestamp": now,
+            "skipped": True
+        }]
+    }
+    
+    await chantiers_col.update_one({"id": chantier_id}, {"$set": update})
+    updated = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    return updated
+
+@api_router.post("/flowchantier/chantiers/{chantier_id}/go-to-step/{step}")
+async def go_to_step(chantier_id: str, step: int, request: Request, current_user: dict = Depends(get_current_user)):
+    """Retourner à une étape précédente"""
+    chantier = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    if not chantier:
+        raise HTTPException(status_code=404, detail="Chantier non trouvé")
+    
+    if step < 1 or step > 4:
+        raise HTTPException(status_code=400, detail="Étape invalide (1-4)")
+    
+    current_step = chantier["current_step"]
+    if step > current_step:
+        raise HTTPException(status_code=400, detail="Impossible d'avancer manuellement. Validez les étapes.")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "current_step": step,
+        "updated_at": now,
+        "historique": chantier.get("historique", []) + [{
+            "action": f"Retour à l'étape {step}",
+            "step": step,
+            "user_id": current_user["id"],
+            "user_nom": f"{current_user['prenom']} {current_user['nom']}",
+            "timestamp": now
+        }]
+    }
+    
+    await chantiers_col.update_one({"id": chantier_id}, {"$set": update})
+    updated = await chantiers_col.find_one({"id": chantier_id}, NO_ID)
+    return updated
+
+@api_router.get("/flowchantier/stats")
+async def get_flowchantier_stats(current_user: dict = Depends(get_current_user)):
+    """Statistiques pour FlowChantier"""
+    total = await chantiers_col.count_documents({})
+    en_cours = await chantiers_col.count_documents({"current_step": {"$gte": 1, "$lte": 4}})
+    a_assigner = await chantiers_col.count_documents({"current_step": 0})
+    termines = await chantiers_col.count_documents({"current_step": 5})
+    
+    return {
+        "total": total,
+        "en_cours": en_cours,
+        "a_assigner": a_assigner,
+        "termines": termines
+    }
+
+# ============== FLOWCHANTIER - CONDUCTEURS ROUTES ==============
+
+@api_router.get("/flowchantier/conducteurs")
+async def get_conducteurs(current_user: dict = Depends(get_current_user)):
+    conducteurs = await conducteurs_col.find({}, NO_ID).sort("nom", 1).to_list(500)
+    return conducteurs
+
+@api_router.post("/flowchantier/conducteurs")
+async def create_conducteur(request: Request, current_user: dict = Depends(get_current_user)):
+    body = await request.json()
+    
+    nom = body.get("nom", "").strip()
+    prenom = body.get("prenom", "").strip()
+    role = body.get("role", "conducteur")  # conducteur ou chef_de_file
+    
+    if not nom or not prenom:
+        raise HTTPException(status_code=400, detail="Nom et prénom requis")
+    
+    conducteur = {
+        "id": str(uuid4()),
+        "nom": nom,
+        "prenom": prenom,
+        "role": role,
+        "telephone": body.get("telephone", ""),
+        "email": body.get("email", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await conducteurs_col.insert_one(conducteur)
+    
+    # Return conducteur without MongoDB _id field
+    created_conducteur = await conducteurs_col.find_one({"id": conducteur["id"]}, NO_ID)
+    return created_conducteur
+
 # Include router
 app.include_router(api_router)
+app.include_router(optim_router)
+app.include_router(fiche_router)
 
 # CORS
 app.add_middleware(
@@ -681,3 +1031,38 @@ async def startup():
             logger.info("Admin password updated")
 
     logger.info("BTP Manager API ready")
+
+    # Migration : suppression étape 12 sur les fiches existantes
+    from fiche_chef_de_file.router import migrate_remove_etape_12
+    await migrate_remove_etape_12()
+
+    # Sync Optim BTP → MongoDB en tâche de fond (non bloquant)
+    asyncio.create_task(_sync_task())
+
+    # Auto-create PROD pole and Fiche de File tool
+    prod_pole = await domaines_col.find_one({"nom": "PROD"})
+    if not prod_pole:
+        prod_pole = {
+            "id": str(uuid4()),
+            "nom": "PROD",
+            "description": "Pôle Production - Gestion des chantiers et du workflow de production",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await domaines_col.insert_one(prod_pole)
+        logger.info("Pôle PROD créé automatiquement")
+    
+    fiche_de_file = await outils_col.find_one({"nom": "Fiche de File"})
+    if not fiche_de_file:
+        fiche_de_file = {
+            "id": str(uuid4()),
+            "nom": "Fiche de File",
+            "domaine_id": prod_pole["id"],
+            "roles_disponibles": [
+                {"name": "conduc", "permissions": ["read", "write", "validate"], "description": "Conducteur de travaux"},
+                {"name": "chef_de_file", "permissions": ["read", "write", "validate", "manage_team"], "description": "Chef de file"},
+                {"name": "viewer", "permissions": ["read"], "description": "Consultation uniquement"}
+            ],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await outils_col.insert_one(fiche_de_file)
+        logger.info("Outil 'Fiche de File' (FlowChantier) créé automatiquement")
